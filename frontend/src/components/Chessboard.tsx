@@ -7,25 +7,86 @@ interface Props {
   label?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Sprite loader
+// ---------------------------------------------------------------------------
+
+const SPRITE_PATHS = {
+  queen: '/sprites/queen.svg',
+  queenSolved: '/sprites/queen-solved.svg',
+} as const;
+
+type SpriteMap = Record<keyof typeof SPRITE_PATHS, HTMLImageElement>;
+
+let spriteCache: SpriteMap | null = null;
+let spritePromise: Promise<SpriteMap> | null = null;
+
+function loadSprites(): Promise<SpriteMap> {
+  if (spriteCache) return Promise.resolve(spriteCache);
+  if (spritePromise) return spritePromise;
+
+  const entries = Object.entries(SPRITE_PATHS) as [keyof typeof SPRITE_PATHS, string][];
+  spritePromise = Promise.all(
+    entries.map(
+      ([key, src]) =>
+        new Promise<[keyof typeof SPRITE_PATHS, HTMLImageElement]>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve([key, img]);
+          img.onerror = reject;
+          img.src = src;
+        }),
+    ),
+  ).then((pairs) => {
+    spriteCache = Object.fromEntries(pairs) as SpriteMap;
+    return spriteCache;
+  });
+  return spritePromise;
+}
+
+// ---------------------------------------------------------------------------
+// Board colors (marble-inspired from legacy chessboard.png)
+// ---------------------------------------------------------------------------
+
+const LIGHT_SQUARE = '#f0e4d0';  // warm cream
+const DARK_SQUARE = '#a08060';   // warm brown
+const ATTACK_TINT = 'rgba(255, 50, 50, 0.35)';
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 const CELL_SIZE = 48;
 const BOARD_PX = CELL_SIZE * BOARD_SIZE;
 
 export const Chessboard: React.FC<Props> = ({ individual, label }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const spritesRef = useRef<SpriteMap | null>(spriteCache);
 
+  // Load sprites once
   useEffect(() => {
+    if (!spritesRef.current) {
+      loadSprites().then((sprites) => {
+        spritesRef.current = sprites;
+        draw();
+      });
+    }
+  }, []);
+
+  const draw = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     ctx.clearRect(0, 0, BOARD_PX, BOARD_PX);
+    const sprites = spritesRef.current;
+    const isSolved = individual?.fitness === MAX_FITNESS;
 
     // Draw checkerboard
     for (let col = 0; col < BOARD_SIZE; col++) {
       for (let row = 0; row < BOARD_SIZE; row++) {
         const isLight = (col + row) % 2 === 0;
-        ctx.fillStyle = isLight ? '#e8d5b5' : '#8b6914';
+        ctx.fillStyle = isLight ? LIGHT_SQUARE : DARK_SQUARE;
         ctx.fillRect(col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
       }
     }
@@ -40,8 +101,7 @@ export const Chessboard: React.FC<Props> = ({ individual, label }) => {
         const attacking =
           ri === rj || Math.abs(i - j) === Math.abs(ri - rj);
         if (attacking) {
-          // Tint the attacking queen cells
-          ctx.fillStyle = 'rgba(255, 60, 60, 0.3)';
+          ctx.fillStyle = ATTACK_TINT;
           ctx.fillRect(i * CELL_SIZE, ri * CELL_SIZE, CELL_SIZE, CELL_SIZE);
           ctx.fillRect(j * CELL_SIZE, rj * CELL_SIZE, CELL_SIZE, CELL_SIZE);
         }
@@ -49,35 +109,49 @@ export const Chessboard: React.FC<Props> = ({ individual, label }) => {
     }
 
     // Draw queens
+    const pad = CELL_SIZE * 0.08;
+    const spriteSize = CELL_SIZE - pad * 2;
+
     for (let col = 0; col < BOARD_SIZE; col++) {
       const row = individual.solution[col]!;
-      const cx = col * CELL_SIZE + CELL_SIZE / 2;
-      const cy = row * CELL_SIZE + CELL_SIZE / 2;
+      const x = col * CELL_SIZE + pad;
+      const y = row * CELL_SIZE + pad;
 
-      // Queen body (circle)
-      ctx.beginPath();
-      ctx.arc(cx, cy, CELL_SIZE * 0.35, 0, Math.PI * 2);
-      ctx.fillStyle = individual.fitness === MAX_FITNESS ? '#4caf50' : '#ffd700';
-      ctx.fill();
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      if (sprites) {
+        const queenSprite = isSolved ? sprites.queenSolved : sprites.queen;
+        ctx.drawImage(queenSprite, x, y, spriteSize, spriteSize);
+      } else {
+        // Fallback: draw circle + crown before sprites load
+        const cx = col * CELL_SIZE + CELL_SIZE / 2;
+        const cy = row * CELL_SIZE + CELL_SIZE / 2;
 
-      // Crown points
-      const r = CELL_SIZE * 0.3;
-      ctx.beginPath();
-      ctx.moveTo(cx - r, cy + r * 0.3);
-      ctx.lineTo(cx - r * 0.6, cy - r * 0.6);
-      ctx.lineTo(cx - r * 0.2, cy);
-      ctx.lineTo(cx, cy - r * 0.8);
-      ctx.lineTo(cx + r * 0.2, cy);
-      ctx.lineTo(cx + r * 0.6, cy - r * 0.6);
-      ctx.lineTo(cx + r, cy + r * 0.3);
-      ctx.closePath();
-      ctx.fillStyle = individual.fitness === MAX_FITNESS ? '#2e7d32' : '#b8860b';
-      ctx.fill();
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy, CELL_SIZE * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = isSolved ? '#4caf50' : '#ffd700';
+        ctx.fill();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        const r = CELL_SIZE * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(cx - r, cy + r * 0.3);
+        ctx.lineTo(cx - r * 0.6, cy - r * 0.6);
+        ctx.lineTo(cx - r * 0.2, cy);
+        ctx.lineTo(cx, cy - r * 0.8);
+        ctx.lineTo(cx + r * 0.2, cy);
+        ctx.lineTo(cx + r * 0.6, cy - r * 0.6);
+        ctx.lineTo(cx + r, cy + r * 0.3);
+        ctx.closePath();
+        ctx.fillStyle = isSolved ? '#2e7d32' : '#b8860b';
+        ctx.fill();
+        ctx.stroke();
+      }
     }
+  };
+
+  useEffect(() => {
+    draw();
   }, [individual]);
 
   return (
@@ -115,7 +189,6 @@ const styles: Record<string, React.CSSProperties> = {
   canvas: {
     border: '2px solid #555',
     borderRadius: 4,
-    imageRendering: 'pixelated',
   },
   info: {
     fontSize: 11,

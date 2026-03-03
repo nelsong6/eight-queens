@@ -83,8 +83,8 @@ const IndividualRow: React.FC<{
                       ? '#4caf50'
                       : '#ffd700'
                     : (col + row) % 2 === 0
-                      ? '#3a3a3a'
-                      : '#2a2a2a',
+                      ? '#f0e4d0'
+                      : '#a08060',
               }}
             />
           ))}
