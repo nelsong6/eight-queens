@@ -1,0 +1,147 @@
+import { useState, useCallback, useRef } from 'react';
+import type { AlgorithmConfig, GenerationResult, GenerationSummary, Individual } from '../engine/types';
+import { AlgorithmRunner } from '../engine/algorithm-runner';
+
+export function useAlgorithm() {
+  const runnerRef = useRef<AlgorithmRunner | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [running, setRunning] = useState(false);
+  const [speed, setSpeed] = useState(100); // ms between generations
+  const [generation, setGeneration] = useState(0);
+  const [bestFitness, setBestFitness] = useState(0);
+  const [avgFitness, setAvgFitness] = useState(0);
+  const [bestIndividual, setBestIndividual] = useState<Individual | null>(null);
+  const [solved, setSolved] = useState(false);
+  const [solutionIndividual, setSolutionIndividual] = useState<Individual | null>(null);
+  const [generationSummaries, setGenerationSummaries] = useState<GenerationSummary[]>([]);
+  const [lastResult, setLastResult] = useState<GenerationResult | null>(null);
+  const [algorithmConfig, setAlgorithmConfig] = useState<AlgorithmConfig | null>(null);
+
+  const applyResult = useCallback((result: GenerationResult) => {
+    setGeneration(result.generationNumber);
+    setBestFitness(result.bestFitness);
+    setAvgFitness(result.avgFitness);
+    setBestIndividual(result.bestIndividual);
+    setSolved(result.solved);
+    setLastResult(result);
+
+    if (result.solved && result.solutionIndividual) {
+      setSolutionIndividual(result.solutionIndividual);
+    }
+
+    setGenerationSummaries((prev) => [
+      ...prev,
+      AlgorithmRunner.toSummary(result),
+    ]);
+  }, []);
+
+  const stopInterval = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setRunning(false);
+  }, []);
+
+  const runOne = useCallback(() => {
+    const runner = runnerRef.current;
+    if (!runner) return;
+
+    const result = runner.runGeneration();
+    if (!result) {
+      stopInterval();
+      return;
+    }
+
+    applyResult(result);
+
+    if (result.solved) {
+      stopInterval();
+    }
+  }, [applyResult, stopInterval]);
+
+  const start = useCallback(
+    (config: AlgorithmConfig) => {
+      stopInterval();
+
+      const runner = new AlgorithmRunner(config);
+      runnerRef.current = runner;
+
+      setGeneration(0);
+      setBestFitness(0);
+      setAvgFitness(0);
+      setBestIndividual(null);
+      setSolved(false);
+      setSolutionIndividual(null);
+      setGenerationSummaries([]);
+      setLastResult(null);
+      setAlgorithmConfig(config);
+      setRunning(true);
+
+      intervalRef.current = setInterval(runOne, speed);
+    },
+    [stopInterval, runOne, speed],
+  );
+
+  const resume = useCallback(() => {
+    if (!runnerRef.current || solved) return;
+    stopInterval();
+    setRunning(true);
+    intervalRef.current = setInterval(runOne, speed);
+  }, [runOne, speed, stopInterval, solved]);
+
+  const pause = useCallback(() => {
+    stopInterval();
+  }, [stopInterval]);
+
+  const stepOnce = useCallback(() => {
+    stopInterval();
+    runOne();
+  }, [stopInterval, runOne]);
+
+  const reset = useCallback(() => {
+    stopInterval();
+    runnerRef.current = null;
+    setGeneration(0);
+    setBestFitness(0);
+    setAvgFitness(0);
+    setBestIndividual(null);
+    setSolved(false);
+    setSolutionIndividual(null);
+    setGenerationSummaries([]);
+    setLastResult(null);
+    setAlgorithmConfig(null);
+  }, [stopInterval]);
+
+  const handleSpeedChange = useCallback(
+    (newSpeed: number) => {
+      setSpeed(newSpeed);
+      if (running && intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(runOne, newSpeed);
+      }
+    },
+    [running, runOne],
+  );
+
+  return {
+    running,
+    speed,
+    setSpeed: handleSpeedChange,
+    generation,
+    bestFitness,
+    avgFitness,
+    bestIndividual,
+    solved,
+    solutionIndividual,
+    generationSummaries,
+    lastResult,
+    algorithmConfig,
+    start,
+    resume,
+    pause,
+    step: stepOnce,
+    reset,
+  };
+}
