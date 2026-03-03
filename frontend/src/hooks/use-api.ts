@@ -46,11 +46,11 @@ export function useApi(user: AuthUser | null) {
   }, []);
 
   const syncGenerations = useCallback(
-    async (runId: string, generations: GenerationSummary[]) => {
+    async (runId: string, generations: GenerationSummary[], summary?: Record<string, unknown>) => {
       syncBufferRef.current.push(...generations);
 
-      // Flush every 20 generations or after 5 seconds
-      const shouldFlush = syncBufferRef.current.length >= 20;
+      // Flush every 20 generations, when solved (summary provided), or after 5 seconds
+      const shouldFlush = syncBufferRef.current.length >= 20 || !!summary;
 
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
 
@@ -60,7 +60,7 @@ export function useApi(user: AuthUser | null) {
 
         syncBufferRef.current = [];
         try {
-          await api.appendGenerations(runId, toSend);
+          await api.appendGenerations(runId, toSend, summary);
         } catch {
           // Re-buffer on failure
           syncBufferRef.current.unshift(...toSend);
