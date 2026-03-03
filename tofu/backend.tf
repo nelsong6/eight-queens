@@ -59,6 +59,11 @@ resource "azurerm_container_app" "api" {
         name  = "COSMOS_DB_CONTAINER_NAME"
         value = azurerm_cosmosdb_sql_container.runs.name
       }
+
+      env {
+        name  = "OWNER_EMAIL"
+        value = "support@romaine.life"
+      }
     }
 
     min_replicas = 0
