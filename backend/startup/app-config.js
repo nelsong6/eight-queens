@@ -49,8 +49,8 @@ export async function fetchAppConfig() {
 
   const googleClientId = await resolveKvReference(googleClientIdSetting);
 
-  // Owner email from Key Vault
-  const ownerEmail = (await kvClient.getSecret('eight-queens-owner-email')).value;
+  // Owner email from environment variable (set on Container App)
+  const ownerEmail = process.env.OWNER_EMAIL;
 
   const config = {
     cosmosDbEndpoint: cosmosEndpointSetting.value,
