@@ -33,3 +33,10 @@
   background-color: #6e1818 !important;
   transform: scale(0.96);
 }
+
+/* Always show datalist dropdown arrow */
+input[list]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: invert(0.7);
+  cursor: pointer;
+}

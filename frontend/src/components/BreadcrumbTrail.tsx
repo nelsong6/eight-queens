@@ -22,7 +22,6 @@ interface BreadcrumbTrailProps {
 const PHASE_NAMES = ['Selection', 'Crossover', 'Mutation', 'Results'];
 
 const PANEL_LABELS: Record<string, string> = {
-  controls: 'Stepping',
   status: 'Status',
   board: 'Chessboard',
   config: 'Session Data',

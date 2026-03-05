@@ -5,7 +5,6 @@ import { useApi } from './hooks/use-api';
 import { Chessboard } from './components/Chessboard';
 import { ConfigPanel } from './components/ConfigPanel';
 import { Controls } from './components/Controls';
-import { StatusBar } from './components/StatusBar';
 import { BreedingListboxes } from './components/BreedingListboxes';
 
 import { GenerationChart } from './components/GenerationChart';
@@ -327,6 +326,21 @@ const App: React.FC = () => {
           onClearWalkthrough={handleClearWalkthrough}
           onClearZoom={handleClearZoom}
         />
+        <Controls
+          sessionPhase={sessionPhase}
+          isRunning={algorithm.running}
+          onPlay={handlePlay}
+          onPause={handlePause}
+          onStep={granularity === 'micro' ? handleWalkThrough : handleStep}
+          onStepN={handleStepN}
+          onNewSession={handleNewSession}
+          speed={algorithm.speed}
+          onSpeedChange={algorithm.setSpeed}
+          solved={algorithm.solved}
+          walkthroughPhase={walkthroughState?.phase ?? null}
+          granularity={granularity}
+          onGranularityChange={handleGranularityChange}
+        />
       </div>
 
       {/* Error banner */}
@@ -349,39 +363,8 @@ const App: React.FC = () => {
 
       {/* Main content */}
       <div ref={mainRef} style={styles.main}>
-        {/* Top row: [Controls] | Board | [Session Data] */}
+        {/* Top row: Board | Session Data */}
         <div style={styles.topRow}>
-          <div style={{ ...styles.wing, flex: '0 1 550px' }}>
-            <ZoomablePanel id="controls" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
-              <Controls
-                sessionPhase={sessionPhase}
-                isRunning={algorithm.running}
-                onPlay={handlePlay}
-                onPause={handlePause}
-                onStep={granularity === 'micro' ? handleWalkThrough : handleStep}
-                onStepN={handleStepN}
-                onNewSession={handleNewSession}
-                speed={algorithm.speed}
-                onSpeedChange={algorithm.setSpeed}
-                solved={algorithm.solved}
-                walkthroughPhase={walkthroughState?.phase ?? null}
-                granularity={granularity}
-                onGranularityChange={handleGranularityChange}
-              />
-            </ZoomablePanel>
-
-            <ZoomablePanel id="status" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
-              <StatusBar
-                generation={algorithm.generation}
-                bestFitness={algorithm.bestFitness}
-                avgFitness={algorithm.avgFitness}
-                solved={algorithm.solved}
-                algorithmConfig={algorithm.algorithmConfig ?? pendingConfig}
-                message={statusMessage}
-              />
-            </ZoomablePanel>
-          </div>
-
           <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
             <Chessboard
               individual={displayIndividual}
@@ -402,6 +385,11 @@ const App: React.FC = () => {
                 algorithmConfig={algorithm.algorithmConfig ?? pendingConfig}
                 stepStatistics={algorithm.lastResult?.stepStatistics ?? null}
                 cumulativeStats={algorithm.cumulativeStats}
+                generation={algorithm.generation}
+                bestFitness={algorithm.bestFitness}
+                avgFitness={algorithm.avgFitness}
+                solved={algorithm.solved}
+                statusMessage={statusMessage}
               />
             </ZoomablePanel>
           </div>
@@ -409,7 +397,7 @@ const App: React.FC = () => {
 
         {/* Bottom row: Breeding/Walkthrough, Chart, RunHistory */}
         <div style={styles.bottomRow}>
-          <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '0 1 auto', minWidth: 0 }}>
             <DrillDownTransition
               isActive={granularity === 'micro' && walkthroughState !== null}
               normalContent={
@@ -571,7 +559,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
   },
   wing: {
-    flex: 1,
+    flex: '0 1 480px',
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 8,

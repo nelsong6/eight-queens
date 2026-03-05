@@ -33,6 +33,11 @@ export const ConfigPanel: React.FC<Props> = ({
   algorithmConfig,
   stepStatistics,
   cumulativeStats,
+  generation,
+  bestFitness,
+  avgFitness,
+  solved,
+  statusMessage,
 }) => {
   const isConfig = sessionPhase === 'config';
   const [populationSize, setPopulationSize] = useState(100);
@@ -155,6 +160,26 @@ export const ConfigPanel: React.FC<Props> = ({
             <span style={styles.statValue}>{(displayMut * 100).toFixed(0)}%</span>
           )}
         </div>
+      </div>
+
+      {/* Status */}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle} data-help="Current progress of the algorithm">Status</div>
+        <StatRow label="Generation" value={generation.toLocaleString()} help="Number of evolutionary cycles completed so far" />
+        <StatRow
+          label="Best Fitness"
+          value={`${bestFitness}/${MAX_FITNESS}`}
+          help="Highest fitness score in the current population — 28/28 means a valid solution"
+        />
+        <StatRow label="Avg Fitness" value={avgFitness.toFixed(1)} help="Mean fitness across all individuals in the current generation" />
+        <StatRow
+          label="State"
+          value={solved ? 'SOLVED' : generation === 0 ? 'Ready' : 'Running'}
+          help="Current state of the algorithm — Ready, Running, or Solved"
+        />
+        {statusMessage && (
+          <div style={styles.statusMessage}>{statusMessage}</div>
+        )}
       </div>
 
       {/* Totals This Step */}
@@ -289,6 +314,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '2px 0',
+    minHeight: 22,
   },
   statLabel: {
     fontSize: 11,
@@ -300,6 +326,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     color: '#e0e0e0',
     fontWeight: 'bold',
+    minWidth: 70,
+    textAlign: 'right' as const,
   },
   inlineInput: {
     width: 70,
@@ -324,6 +352,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #3a3a5a',
     borderRadius: 3,
     textAlign: 'right' as const,
+  },
+  statusMessage: {
+    marginTop: 6,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    color: '#ccc',
+    lineHeight: 1.3,
   },
   inlineGroup: {
     fontSize: 11,

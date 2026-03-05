@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import type { Individual, GenerationBreedingData } from '../engine/types';
 
 interface Props {
@@ -22,6 +22,15 @@ const VirtualList: React.FC<{
   emptyText?: string;
 }> = ({ items, onSelect, selectedId, emptyText = 'No data' }) => {
   const [scrollTop, setScrollTop] = useState(0);
+
+  const { idWidth, fitWidth } = useMemo(() => {
+    let maxId = 0, maxFit = 0;
+    for (const ind of items) {
+      if (ind.id > maxId) maxId = ind.id;
+      if (ind.fitness > maxFit) maxFit = ind.fitness;
+    }
+    return { idWidth: String(maxId).length, fitWidth: String(maxFit).length };
+  }, [items]);
 
   if (items.length === 0) {
     return <div style={vlStyles.empty}>{emptyText}</div>;
@@ -53,9 +62,9 @@ const VirtualList: React.FC<{
               }}
               onClick={() => onSelect(ind)}
             >
-              <span style={vlStyles.id}>[{ind.id}]</span>{' '}
+              <span style={vlStyles.id}>[{String(ind.id).padStart(idWidth)}]</span>{' '}
               <span style={vlStyles.solution}>{ind.solution.join(' ')}</span>{' '}
-              <span style={vlStyles.fitness}>f:{ind.fitness}</span>
+              <span style={vlStyles.fitness}>f:{String(ind.fitness).padStart(fitWidth)}</span>
             </div>
           );
         })}
@@ -111,13 +120,22 @@ const vlStyles: Record<string, React.CSSProperties> = {
 // Iteration data dropdown categories
 // ---------------------------------------------------------------------------
 
-type CategoryKey = 'Eligible parents' | 'Actual parents' | 'Children' | 'Mutations';
+type CategoryKey = 'Breeding Pairs' | 'Eligible parents' | 'Actual parents' | 'Children' | 'Mutations';
+
+const CATEGORY_HELP: Record<CategoryKey, string> = {
+  'Breeding Pairs': 'Side-by-side view of each parent pair and the two children produced by their crossover',
+  'Eligible parents': 'All individuals from the previous generation whose fitness qualified them for the selection pool',
+  'Actual parents': 'The specific individuals chosen by roulette-wheel selection to breed this generation',
+  'Children': 'All offspring produced by crossover — each pair of parents creates two children by swapping gene segments',
+  'Mutations': 'Children that had a random gene changed after crossover — introduces variety to escape local optima',
+};
 
 function getCategoryData(
   breedingData: GenerationBreedingData,
   category: CategoryKey,
 ): Individual[] {
   switch (category) {
+    case 'Breeding Pairs': return [];
     case 'Eligible parents': return breedingData.eligibleParents;
     case 'Actual parents': return breedingData.actualParents;
     case 'Children': return breedingData.allChildren;
@@ -135,7 +153,7 @@ export const BreedingListboxes: React.FC<Props> = ({
   onSelectIndividual,
 }) => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('Breeding Pairs');
 
   const handleSelect = useCallback(
     (ind: Individual, source: string) => {
@@ -145,78 +163,75 @@ export const BreedingListboxes: React.FC<Props> = ({
     [onSelectIndividual],
   );
 
-  const categoryData = breedingData && selectedCategory
-    ? getCategoryData(breedingData, selectedCategory as CategoryKey)
+  const categoryData = breedingData && selectedCategory !== 'Breeding Pairs'
+    ? getCategoryData(breedingData, selectedCategory)
     : [];
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title} data-help="Raw breeding data showing parents and children from each generation">Breeding Results — Gen {Math.max(generation, 1)}</div>
-
-      {/* 2x2 grid: Parent A, Parent B, Child A, Child B */}
-      <div style={styles.grid} data-help="Click any individual to view its queen placement on the board">
-        <div style={styles.listCol}>
-          <div style={styles.listHeader} data-help="First parent in each breeding pair — selected by roulette wheel">
-            Parent A <span style={styles.count}>({breedingData?.aParents.length ?? 0})</span>
-          </div>
-          <VirtualList
-            items={breedingData?.aParents ?? []}
-            onSelect={(ind) => handleSelect(ind, 'Parent A')}
-            selectedId={selectedId}
-          />
-        </div>
-        <div style={styles.listCol}>
-          <div style={styles.listHeader} data-help="Second parent in each breeding pair — paired with Parent A for crossover">
-            Parent B <span style={styles.count}>({breedingData?.bParents.length ?? 0})</span>
-          </div>
-          <VirtualList
-            items={breedingData?.bParents ?? []}
-            onSelect={(ind) => handleSelect(ind, 'Parent B')}
-            selectedId={selectedId}
-          />
-        </div>
-        <div style={styles.listCol}>
-          <div style={styles.listHeader} data-help="First child from crossover — gets Parent A's left genes and Parent B's right genes">
-            Child A <span style={styles.count}>({breedingData?.aChildren.length ?? 0})</span>
-          </div>
-          <VirtualList
-            items={breedingData?.aChildren ?? []}
-            onSelect={(ind) => handleSelect(ind, 'Child A')}
-            selectedId={selectedId}
-          />
-        </div>
-        <div style={styles.listCol}>
-          <div style={styles.listHeader} data-help="Second child from crossover — gets Parent B's left genes and Parent A's right genes">
-            Child B <span style={styles.count}>({breedingData?.bChildren.length ?? 0})</span>
-          </div>
-          <VirtualList
-            items={breedingData?.bChildren ?? []}
-            onSelect={(ind) => handleSelect(ind, 'Child B')}
-            selectedId={selectedId}
-          />
-        </div>
-      </div>
-
-      {/* Iteration data dropdown */}
-      <div style={styles.dropdownRow} data-help="View different categories of population data from this generation">
-        <label style={styles.dropdownLabel}>Iteration Data:</label>
+      <div style={styles.titleRow}>
+        <div style={styles.title} data-help="Raw breeding data showing parents and children from each generation">Breeding Results — Gen {Math.max(generation, 1)}</div>
         <select
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
+          onChange={(e) => setSelectedCategory(e.target.value as CategoryKey)}
           style={styles.select}
+          data-help={CATEGORY_HELP[selectedCategory]}
         >
-          <option value="">-- Select --</option>
+          <option value="Breeding Pairs">Breeding Pairs</option>
           <option value="Eligible parents">Eligible parents</option>
           <option value="Actual parents">Actual parents</option>
           <option value="Children">Children</option>
           <option value="Mutations">Mutations</option>
         </select>
-        {selectedCategory && (
+        {selectedCategory !== 'Breeding Pairs' && (
           <span style={styles.count}>({categoryData.length})</span>
         )}
       </div>
 
-      {selectedCategory && (
+      {selectedCategory === 'Breeding Pairs' ? (
+        <div style={styles.grid} data-help="Click any individual to view its queen placement on the board">
+          <div style={styles.listCol}>
+            <div style={styles.listHeader} data-help="First parent in each breeding pair — selected by roulette wheel">
+              Parent A <span style={styles.count}>({breedingData?.aParents.length ?? 0})</span>
+            </div>
+            <VirtualList
+              items={breedingData?.aParents ?? []}
+              onSelect={(ind) => handleSelect(ind, 'Parent A')}
+              selectedId={selectedId}
+            />
+          </div>
+          <div style={styles.listCol}>
+            <div style={styles.listHeader} data-help="Second parent in each breeding pair — paired with Parent A for crossover">
+              Parent B <span style={styles.count}>({breedingData?.bParents.length ?? 0})</span>
+            </div>
+            <VirtualList
+              items={breedingData?.bParents ?? []}
+              onSelect={(ind) => handleSelect(ind, 'Parent B')}
+              selectedId={selectedId}
+            />
+          </div>
+          <div style={styles.listCol}>
+            <div style={styles.listHeader} data-help="First child from crossover — gets Parent A's left genes and Parent B's right genes">
+              Child A <span style={styles.count}>({breedingData?.aChildren.length ?? 0})</span>
+            </div>
+            <VirtualList
+              items={breedingData?.aChildren ?? []}
+              onSelect={(ind) => handleSelect(ind, 'Child A')}
+              selectedId={selectedId}
+            />
+          </div>
+          <div style={styles.listCol}>
+            <div style={styles.listHeader} data-help="Second child from crossover — gets Parent B's left genes and Parent A's right genes">
+              Child B <span style={styles.count}>({breedingData?.bChildren.length ?? 0})</span>
+            </div>
+            <VirtualList
+              items={breedingData?.bChildren ?? []}
+              onSelect={(ind) => handleSelect(ind, 'Child B')}
+              selectedId={selectedId}
+            />
+          </div>
+        </div>
+      ) : (
         <VirtualList
           items={categoryData}
           onSelect={(ind) => handleSelect(ind, selectedCategory)}
@@ -239,21 +254,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column' as const,
   },
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   title: {
     fontSize: 12,
     fontFamily: 'monospace',
     color: '#aaa',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 8,
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: '32ch 32ch',
     gridTemplateRows: '1fr 1fr',
     gap: 8,
     flex: 1,
     minHeight: 0,
+    fontFamily: 'monospace',
+    fontSize: 11,
   },
   listCol: {
     display: 'flex',
@@ -270,17 +292,6 @@ const styles: Record<string, React.CSSProperties> = {
   count: {
     color: '#777',
     fontWeight: 'normal',
-  },
-  dropdownRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  dropdownLabel: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    color: '#aaa',
   },
   select: {
     padding: '4px 8px',
