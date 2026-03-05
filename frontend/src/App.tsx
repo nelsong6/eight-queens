@@ -7,12 +7,28 @@ import { ConfigPanel } from './components/ConfigPanel';
 import { Controls } from './components/Controls';
 import { StatusBar } from './components/StatusBar';
 import { BreedingListboxes } from './components/BreedingListboxes';
-import { SessionStatistics } from './components/SessionStatistics';
+
 import { GenerationChart } from './components/GenerationChart';
 import { GoogleSignIn } from './components/GoogleSignIn';
 import { RunHistory } from './components/RunHistory';
-import type { AlgorithmConfig, Individual } from './engine/types';
+import { HelpBar } from './components/HelpBar';
+import { BreadcrumbTrail } from './components/BreadcrumbTrail';
+import { DrillDownTransition } from './components/DrillDownTransition';
+import { ZoomablePanel } from './components/ZoomablePanel';
+import { SelectionPhase } from './components/walkthrough/SelectionPhase';
+import { CrossoverPhase } from './components/walkthrough/CrossoverPhase';
+import { MutationPhase } from './components/walkthrough/MutationPhase';
+import { ResultsPhase } from './components/walkthrough/ResultsPhase';
+import type { AlgorithmConfig, Individual, GenerationResult } from './engine/types';
 import { createRandomIndividual } from './engine/individual';
+
+type SessionPhase = 'config' | 'running' | 'review';
+
+interface WalkthroughState {
+  phase: number;
+  result: GenerationResult;
+  browsePairIndex: number;
+}
 
 const App: React.FC = () => {
   const auth = useAuth();
@@ -22,8 +38,64 @@ const App: React.FC = () => {
   const lastSyncedGenRef = useRef(0);
   const activeRunIdRef = useRef<string | null>(null);
 
+  // Session lifecycle
+  const [sessionPhase, setSessionPhase] = useState<SessionPhase>('config');
+
+  // Walkthrough state
+  const [walkthroughState, setWalkthroughState] = useState<WalkthroughState | null>(null);
+
+  // Step granularity (applies to manual step only; auto-play always uses full step)
+  const [granularity, setGranularity] = useState<'full' | 'micro'>('full');
+
+  const handleGranularityChange = useCallback((g: 'full' | 'micro') => {
+    setGranularity(g);
+    if (g === 'full') {
+      setWalkthroughState(null);
+    }
+  }, []);
+
+  // Pending config from ConfigPanel (used for auto-start on first action)
+  const [pendingConfig, setPendingConfig] = useState<AlgorithmConfig>({
+    populationSize: 100,
+    crossoverRange: [1, 6],
+    mutationRate: 0.25,
+  });
+  const pendingConfigRef = useRef(pendingConfig);
+  pendingConfigRef.current = pendingConfig;
+
+  const handleConfigChange = useCallback((config: AlgorithmConfig) => {
+    setPendingConfig(config);
+  }, []);
+
+  // Zoom state
+  const [zoomedPanel, setZoomedPanel] = useState<string | null>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && zoomedPanel) {
+        setZoomedPanel(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [zoomedPanel]);
+
+  // Lock background scroll when a panel is zoomed
+  useEffect(() => {
+    if (zoomedPanel) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [zoomedPanel]);
+
+  // Key to force remount of child components on reset
+  const [resetKey, setResetKey] = useState(0);
+
   // Random individual shown before algorithm starts
-  const [initialIndividual] = useState<Individual>(() => createRandomIndividual(0));
+  const [initialIndividual, setInitialIndividual] = useState<Individual>(() => createRandomIndividual(0));
 
   // Viewed individual state (for click-to-view from breeding listboxes)
   const [viewedIndividual, setViewedIndividual] = useState<Individual | null>(null);
@@ -41,21 +113,32 @@ const App: React.FC = () => {
   }, [algorithm.generation]);
 
   const handleStart = useCallback(
-    async (config: AlgorithmConfig) => {
+    (config: AlgorithmConfig) => {
       lastSyncedGenRef.current = 0;
       activeRunIdRef.current = null;
 
-      if (auth.user) {
-        const runId = await apiHook.createRun(config);
-        if (runId) {
-          activeRunIdRef.current = runId;
-        }
-      }
-
       algorithm.start(config);
+      setSessionPhase('running');
+      setWalkthroughState(null);
+
+      // Create API run in background (non-blocking)
+      if (auth.user) {
+        apiHook.createRun(config).then((runId) => {
+          if (runId) {
+            activeRunIdRef.current = runId;
+          }
+        });
+      }
     },
     [auth.user, apiHook, algorithm],
   );
+
+  /** Auto-start the algorithm if still in config phase. */
+  const ensureStarted = useCallback(() => {
+    if (sessionPhase === 'config') {
+      handleStart(pendingConfigRef.current);
+    }
+  }, [sessionPhase, handleStart]);
 
   // Sync generations to API periodically
   useEffect(() => {
@@ -83,6 +166,8 @@ const App: React.FC = () => {
       if (!run) return;
       algorithm.reset();
       algorithm.start(run.config);
+      setSessionPhase('running');
+      setWalkthroughState(null);
     },
     [apiHook, algorithm],
   );
@@ -93,7 +178,86 @@ const App: React.FC = () => {
     activeRunIdRef.current = null;
     setViewedIndividual(null);
     setViewedSource('');
+    setSessionPhase('config');
+    setWalkthroughState(null);
+    setGranularity('full');
+    setZoomedPanel(null);
+    setInitialIndividual(createRandomIndividual(0));
+    setResetKey((k) => k + 1);
   }, [algorithm]);
+
+  const handleNewSession = useCallback(() => {
+    handleReset();
+  }, [handleReset]);
+
+  // Walkthrough phases (0-indexed internally, shown as 1-4 in UI):
+  //   0 = Selection  (Step 1/4) – picks parents via roulette wheel
+  //   1 = Crossover   (Step 2/4) – single-point crossover produces children
+  //   2 = Mutation    (Step 3/4) – random gene mutations on children
+  //   3 = Results     (Step 4/4) – generation summary, best fitness
+  // After phase 3, a new generation runs and we loop back to phase 0.
+  const handleWalkThrough = useCallback(() => {
+    ensureStarted();
+    if (!walkthroughState) {
+      // First entry: run a generation and start at phase 0 (Selection)
+      const result = algorithm.step();
+      if (result) {
+        setWalkthroughState({ phase: 0, result, browsePairIndex: 0 });
+      }
+    } else if (walkthroughState.phase < 3) {
+      // Advance to next phase within the current generation
+      setWalkthroughState({ ...walkthroughState, phase: walkthroughState.phase + 1 });
+    } else {
+      // Phase 3 done → run next generation and loop back to phase 0
+      const result = algorithm.step();
+      if (result) {
+        setWalkthroughState({ phase: 0, result, browsePairIndex: 0 });
+      }
+    }
+  }, [walkthroughState, algorithm, ensureStarted]);
+
+  const handleWalkthroughPairChange = useCallback((index: number) => {
+    if (walkthroughState) {
+      setWalkthroughState({ ...walkthroughState, browsePairIndex: index });
+    }
+  }, [walkthroughState]);
+
+  const handlePlay = useCallback(() => {
+    ensureStarted();
+    setGranularity('full');
+    setWalkthroughState(null);
+    algorithm.resume();
+  }, [ensureStarted, algorithm]);
+
+  const handleStep = useCallback(() => {
+    ensureStarted();
+    algorithm.step();
+  }, [ensureStarted, algorithm]);
+
+  const handleStepN = useCallback((count: number) => {
+    ensureStarted();
+    algorithm.stepN(count);
+  }, [ensureStarted, algorithm]);
+
+  const handlePause = useCallback(() => {
+    algorithm.pause();
+  }, [algorithm]);
+
+  const handleClearWalkthrough = useCallback(() => {
+    setWalkthroughState(null);
+  }, []);
+
+  const handleClearZoom = useCallback(() => {
+    setZoomedPanel(null);
+  }, []);
+
+  // Transition to review phase when solved
+  useEffect(() => {
+    if (algorithm.solved) {
+      setSessionPhase('review');
+      setWalkthroughState(null);
+    }
+  }, [algorithm.solved]);
 
   const hasStarted = algorithm.generation > 0 || algorithm.bestIndividual !== null;
 
@@ -126,23 +290,44 @@ const App: React.FC = () => {
 
   return (
     <div style={styles.app}>
-      {/* Header */}
-      <header style={styles.header}>
-        <div style={styles.headerLeft}>
-          <h1 style={styles.title}>Eight Queens: Genetic Algorithm</h1>
-          <p style={styles.subtitle}>
-            Evolving solutions to the classic 8-queens puzzle
-          </p>
-        </div>
-        <div style={styles.headerRight}>
-          <GoogleSignIn
-            user={auth.user}
-            onSignIn={auth.signIn}
-            onSignOut={auth.signOut}
-            renderGoogleButton={auth.renderGoogleButton}
-          />
-        </div>
-      </header>
+      {/* Sticky top bar: header + help tooltip */}
+      <div style={styles.stickyTop}>
+        <header style={styles.header}>
+          <div style={styles.headerLeft}>
+            <div style={styles.titleRow}>
+              <h1 style={styles.title} data-help="Place 8 queens on a chessboard so none attack each other — solved by evolving random placements">Eight Queens: Genetic Algorithm</h1>
+              <button onClick={handleReset} className="btn" data-help="Clear all progress and return to configuration" style={styles.resetBtn} title="Reset">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+            </div>
+            <p style={styles.subtitle} data-help="Uses selection, crossover, and mutation to breed better solutions each generation">
+              Evolving solutions to the classic 8-queens puzzle
+            </p>
+          </div>
+          <div style={styles.headerRight}>
+            <GoogleSignIn
+              user={auth.user}
+              onSignIn={auth.signIn}
+              onSignOut={auth.signOut}
+              renderGoogleButton={auth.renderGoogleButton}
+            />
+          </div>
+        </header>
+        <HelpBar />
+        <BreadcrumbTrail
+          sessionPhase={sessionPhase}
+          granularity={granularity}
+          walkthroughPhase={walkthroughState?.phase ?? null}
+          browsePairIndex={walkthroughState?.browsePairIndex ?? null}
+          zoomedPanel={zoomedPanel}
+          onSetGranularity={handleGranularityChange}
+          onClearWalkthrough={handleClearWalkthrough}
+          onClearZoom={handleClearZoom}
+        />
+      </div>
 
       {/* Error banner */}
       {apiHook.error && (
@@ -154,71 +339,122 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Backdrop overlay when a panel is zoomed */}
+      {zoomedPanel && (
+        <div
+          style={styles.backdrop}
+          onClick={() => setZoomedPanel(null)}
+        />
+      )}
+
       {/* Main content */}
-      <div style={styles.main}>
-        {/* Top row: Board | Controls+Status | SessionStats | Config */}
+      <div ref={mainRef} style={styles.main}>
+        {/* Top row: [Controls] | Board | [Session Data] */}
         <div style={styles.topRow}>
-          <Chessboard
-            individual={displayIndividual}
-            label={displayLabel}
-            showAttacks={hasStarted}
-            speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
-          />
+          <div style={{ ...styles.wing, flex: '0 1 550px' }}>
+            <ZoomablePanel id="controls" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+              <Controls
+                sessionPhase={sessionPhase}
+                isRunning={algorithm.running}
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onStep={granularity === 'micro' ? handleWalkThrough : handleStep}
+                onStepN={handleStepN}
+                onNewSession={handleNewSession}
+                speed={algorithm.speed}
+                onSpeedChange={algorithm.setSpeed}
+                solved={algorithm.solved}
+                walkthroughPhase={walkthroughState?.phase ?? null}
+                granularity={granularity}
+                onGranularityChange={handleGranularityChange}
+              />
+            </ZoomablePanel>
 
-          <div style={styles.sidePanel}>
-            <Controls
-              isRunning={algorithm.running}
-              onPlay={algorithm.resume}
-              onPause={algorithm.pause}
-              onStep={algorithm.step}
-              onStepN={algorithm.stepN}
-              onRunUntilSolved={algorithm.runUntilSolved}
-              onReset={handleReset}
-              speed={algorithm.speed}
-              onSpeedChange={algorithm.setSpeed}
-              hasStarted={hasStarted}
-              solved={algorithm.solved}
-            />
-
-            <StatusBar
-              generation={algorithm.generation}
-              bestFitness={algorithm.bestFitness}
-              avgFitness={algorithm.avgFitness}
-              solved={algorithm.solved}
-              algorithmConfig={algorithm.algorithmConfig}
-              message={statusMessage}
-            />
+            <ZoomablePanel id="status" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+              <StatusBar
+                generation={algorithm.generation}
+                bestFitness={algorithm.bestFitness}
+                avgFitness={algorithm.avgFitness}
+                solved={algorithm.solved}
+                algorithmConfig={algorithm.algorithmConfig ?? pendingConfig}
+                message={statusMessage}
+              />
+            </ZoomablePanel>
           </div>
 
-          <ConfigPanel
-            onStart={handleStart}
-            isRunning={algorithm.running}
-            presets={apiHook.presets}
-          />
+          <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+            <Chessboard
+              individual={displayIndividual}
+              label={displayLabel}
+              showAttacks={hasStarted}
+              speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
+              zoomed={zoomedPanel === 'board'}
+            />
+          </ZoomablePanel>
 
-          <SessionStatistics
-            algorithmConfig={algorithm.algorithmConfig}
-            stepStatistics={algorithm.lastResult?.stepStatistics ?? null}
-            cumulativeStats={algorithm.cumulativeStats}
-          />
+          <div style={styles.wing}>
+            <ZoomablePanel id="config" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+              <ConfigPanel
+                key={`config-${resetKey}`}
+                onConfigChange={handleConfigChange}
+                sessionPhase={sessionPhase}
+                presets={apiHook.presets}
+                algorithmConfig={algorithm.algorithmConfig ?? pendingConfig}
+                stepStatistics={algorithm.lastResult?.stepStatistics ?? null}
+                cumulativeStats={algorithm.cumulativeStats}
+              />
+            </ZoomablePanel>
+          </div>
         </div>
 
-        {/* Bottom row: Breeding, Chart, RunHistory */}
+        {/* Bottom row: Breeding/Walkthrough, Chart, RunHistory */}
         <div style={styles.bottomRow}>
-          <BreedingListboxes
-            breedingData={algorithm.lastResult?.breedingData ?? null}
-            onSelectIndividual={handleSelectIndividual}
-          />
+          <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '1 1 380px', minWidth: 0 }}>
+            <DrillDownTransition
+              isActive={granularity === 'micro' && walkthroughState !== null}
+              normalContent={
+                <BreedingListboxes
+                  breedingData={granularity === 'micro' ? null : (algorithm.lastResult?.breedingData ?? null)}
+                  generation={algorithm.generation}
+                  onSelectIndividual={handleSelectIndividual}
+                />
+              }
+              drillDownContent={
+                walkthroughState ? (
+                  walkthroughState.phase === 0 ? (
+                    <SelectionPhase result={walkthroughState.result} />
+                  ) : walkthroughState.phase === 1 ? (
+                    <CrossoverPhase
+                      result={walkthroughState.result}
+                      pairIndex={walkthroughState.browsePairIndex}
+                      onPairChange={handleWalkthroughPairChange}
+                      onSelectIndividual={handleSelectIndividual}
+                    />
+                  ) : walkthroughState.phase === 2 ? (
+                    <MutationPhase result={walkthroughState.result} />
+                  ) : (
+                    <ResultsPhase result={walkthroughState.result} />
+                  )
+                ) : (
+                  <SelectionPhase />
+                )
+              }
+            />
+          </ZoomablePanel>
 
-          <GenerationChart generationSummaries={algorithm.generationSummaries} />
+          <ZoomablePanel id="chart" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '0 1 auto', maxWidth: 400 }}>
+            <GenerationChart generationSummaries={algorithm.generationSummaries} />
+          </ZoomablePanel>
 
-          <RunHistory
-            runs={apiHook.runs}
-            onLoadRun={handleLoadRun}
-            onDeleteRun={apiHook.deleteRun}
-            isAuthenticated={!!auth.user}
-            loading={apiHook.loading}
-          />
+          <ZoomablePanel id="history" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '1 1 300px', minWidth: 0 }}>
+            <RunHistory
+              runs={apiHook.runs}
+              onLoadRun={handleLoadRun}
+              onDeleteRun={apiHook.deleteRun}
+              isAuthenticated={!!auth.user}
+              loading={apiHook.loading}
+            />
+          </ZoomablePanel>
         </div>
       </div>
     </div>
@@ -240,6 +476,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     margin: 0,
   },
+  stickyTop: {
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: 100,
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -253,6 +494,22 @@ const styles: Record<string, React.CSSProperties> = {
   headerLeft: {
     display: 'flex',
     flexDirection: 'column' as const,
+  },
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  resetBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+    backgroundColor: '#2a2a4a',
+    color: '#e0e0e0',
+    border: '1px solid #3a3a5a',
+    borderRadius: 4,
+    cursor: 'pointer',
   },
   headerRight: {
     display: 'flex',
@@ -293,6 +550,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     fontSize: 11,
   },
+  backdrop: {
+    position: 'fixed' as const,
+    inset: 0,
+    zIndex: 150,
+    backgroundColor: 'transparent',
+  },
   main: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -305,15 +568,21 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 12,
     alignItems: 'flex-start',
-    flexWrap: 'wrap' as const,
+    justifyContent: 'center',
+  },
+  wing: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+    alignItems: 'stretch',
+    minWidth: 0,
   },
   sidePanel: {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 8,
-    width: 200,
     flexShrink: 0,
-    alignSelf: 'stretch',
   },
   bottomRow: {
     display: 'flex',

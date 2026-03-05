@@ -20,7 +20,7 @@ export const RunHistory: React.FC<Props> = ({
 
   return (
     <div style={styles.panel}>
-      <h3 style={styles.title}>Run History</h3>
+      <h3 style={styles.title} data-help="Previously saved algorithm runs — sign in with Google to save and load">Run History</h3>
       {loading && <div style={styles.loading}>Loading...</div>}
       {!loading && runs.length === 0 && (
         <div style={styles.empty}>No saved runs yet</div>
@@ -42,12 +42,14 @@ export const RunHistory: React.FC<Props> = ({
             <button
               onClick={() => onLoadRun(run.id)}
               style={styles.actionBtn}
+              data-help="Restore this saved run's configuration"
             >
               Load
             </button>
             <button
               onClick={() => onDeleteRun(run.id)}
               style={{ ...styles.actionBtn, color: '#f44336' }}
+              data-help="Permanently delete this saved run"
             >
               Del
             </button>
@@ -64,7 +66,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 16,
     border: '1px solid #2a2a4a',
-    flex: '1 1 300px',
+    flex: 1,
   },
   title: {
     margin: '0 0 10px 0',

@@ -1,145 +1,150 @@
 import React, { useState } from 'react';
 
+type SessionPhase = 'config' | 'running' | 'review';
+
 interface Props {
+  sessionPhase: SessionPhase;
   isRunning: boolean;
   onPlay: () => void;
   onPause: () => void;
   onStep: () => void;
   onStepN: (count: number) => void;
-  onRunUntilSolved: () => void;
-  onReset: () => void;
+  onNewSession: () => void;
   speed: number;
   onSpeedChange: (speed: number) => void;
-  hasStarted: boolean;
   solved: boolean;
+  walkthroughPhase: number | null;
+  granularity: 'full' | 'micro';
+  onGranularityChange: (g: 'full' | 'micro') => void;
 }
 
 const STEP_PRESETS = [1, 2, 5, 10, 25, 50, 100, 1000];
 
 export const Controls: React.FC<Props> = ({
+  sessionPhase,
   isRunning,
   onPlay,
   onPause,
   onStep,
   onStepN,
-  onRunUntilSolved,
-  onReset,
+  onNewSession,
   speed,
   onSpeedChange,
-  hasStarted,
   solved,
+  walkthroughPhase,
+  granularity,
+  onGranularityChange,
 }) => {
-  const [stepPreset, setStepPreset] = useState(1);
-  const [customStepCount, setCustomStepCount] = useState('');
+  const [stepCount, setStepCount] = useState('1');
 
-  const canStep = hasStarted && !isRunning && !solved;
+  const canAct = !isRunning && !solved;
+  const isWalking = walkthroughPhase !== null;
 
   return (
     <div style={styles.panel}>
-      {/* Transport buttons */}
-      <div style={styles.btnRow}>
-        {isRunning ? (
-          <button onClick={onPause} className="btn" style={styles.btn}>
-            Pause
-          </button>
-        ) : (
+      {/* Stepping section */}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle} data-help="Choose stepping mode and advance generations">Stepping</div>
+        <div style={styles.granularityRow}>
           <button
-            onClick={onPlay}
-            className="btn"
-            disabled={!hasStarted || solved}
-            style={{ ...styles.btn, opacity: !hasStarted || solved ? 0.5 : 1 }}
+            onClick={() => onGranularityChange('full')}
+            disabled={solved}
+            data-help="Run complete generations without showing intermediate phases"
+            style={{
+              ...styles.granularityBtn,
+              ...(granularity === 'full' ? styles.granularityBtnActive : styles.granularityBtnInactive),
+              opacity: solved ? 0.5 : 1,
+            }}
           >
-            Play
+            Full Step
           </button>
-        )}
-        <button
-          onClick={onStep}
-          className="btn"
-          disabled={!canStep}
-          style={{ ...styles.btn, opacity: !canStep ? 0.5 : 1 }}
-        >
-          Step
-        </button>
-        <button onClick={onReset} className="btn" style={styles.btn}>
-          Reset
-        </button>
+          <button
+            onClick={() => onGranularityChange('micro')}
+            disabled={solved}
+            data-help="Show each algorithm phase (selection, crossover, mutation) separately"
+            style={{
+              ...styles.granularityBtn,
+              ...(granularity === 'micro' ? styles.granularityBtnActive : styles.granularityBtnInactive),
+              opacity: solved ? 0.5 : 1,
+            }}
+          >
+            Micro Step
+          </button>
+        </div>
+        <div style={styles.btnRow} data-help={isWalking ? 'Advance to the next walkthrough phase' : 'Advance by N generations — pick a preset or type a custom number'}>
+          <input
+            list="step-presets"
+            value={stepCount}
+            onChange={(e) => setStepCount(e.target.value)}
+            disabled={solved || isWalking}
+            style={{ ...styles.textInput, opacity: solved || isWalking ? 0.5 : 1 }}
+          />
+          <datalist id="step-presets">
+            {STEP_PRESETS.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+          <button
+            onClick={() => {
+              if (isWalking) { onStep(); return; }
+              const n = parseInt(stepCount, 10);
+              if (n === 1) onStep();
+              else if (n > 1) onStepN(n);
+            }}
+            className="btn"
+            disabled={isWalking ? false : (!canAct || !stepCount || !/^\d+$/.test(stepCount) || parseInt(stepCount, 10) < 1)}
+            style={{
+              ...styles.btn,
+              flex: 1,
+              opacity: (!canAct && !isWalking) ? 0.5 : 1,
+              backgroundColor: isWalking ? '#4a3a8a' : '#2a2a4a',
+              borderColor: isWalking ? '#6c5ce7' : '#3a3a5a',
+            }}
+          >
+            {isWalking ? `Step ${walkthroughPhase! + 1}/4` : 'Step'}
+          </button>
+        </div>
       </div>
 
-      {/* Speed slider */}
-      <label style={styles.speedLabel}>
-        <span style={styles.speedText}>Speed: {speed >= 500 ? 'Max' : `${speed}`}</span>
-        <input
-          type="range"
-          min={1}
-          max={500}
-          value={speed}
-          onChange={(e) => onSpeedChange(Number(e.target.value))}
-          style={styles.slider}
-        />
-      </label>
-
-      <div style={styles.divider} />
-
-      {/* Step-by-N preset */}
-      <div style={styles.btnRow}>
-        <select
-          value={stepPreset}
-          onChange={(e) => setStepPreset(Number(e.target.value))}
-          style={styles.select}
-        >
-          {STEP_PRESETS.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => onStepN(stepPreset)}
-          className="btn"
-          disabled={!canStep}
-          style={{ ...styles.btn, flex: 1, opacity: !canStep ? 0.5 : 1 }}
-        >
-          Step {stepPreset}
-        </button>
+      {/* Playback section */}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle} data-help="Auto-run generations and control speed">Playback</div>
+        <div style={styles.btnRow}>
+          {isRunning ? (
+            <button onClick={onPause} className="btn" data-help="Pause auto-run" style={{ ...styles.btn, flex: 1 }}>
+              Pause
+            </button>
+          ) : (
+            <button
+              onClick={onPlay}
+              className="btn"
+              disabled={!canAct}
+              data-help="Continuously run full generations automatically"
+              style={{ ...styles.btn, flex: 1, opacity: !canAct ? 0.5 : 1 }}
+            >
+              Auto-play
+            </button>
+          )}
+        </div>
+        <label style={styles.speedLabel} data-help="Controls delay between generations — higher is faster, 'Max' removes all delay">
+          <span style={styles.speedText}>Speed: {speed >= 500 ? 'Max' : `${speed}`}</span>
+          <input
+            type="range"
+            min={1}
+            max={500}
+            value={speed}
+            onChange={(e) => onSpeedChange(Number(e.target.value))}
+            disabled={solved}
+            style={{ ...styles.slider, opacity: solved ? 0.5 : 1 }}
+          />
+        </label>
       </div>
 
-      {/* Step-by-N custom */}
-      <div style={styles.btnRow}>
-        <input
-          type="number"
-          value={customStepCount}
-          onChange={(e) => setCustomStepCount(e.target.value)}
-          placeholder="N"
-          min={1}
-          style={styles.textInput}
-        />
-        <button
-          onClick={() => onStepN(Number(customStepCount) || 1)}
-          className="btn"
-          disabled={!canStep}
-          style={{ ...styles.btn, flex: 1, opacity: !canStep ? 0.5 : 1 }}
-        >
-          Step N
+      {sessionPhase === 'review' && (
+        <button onClick={onNewSession} className="btn" data-help="Reset and return to configuration" style={styles.newSessionBtn}>
+          New Session
         </button>
-      </div>
-
-      <div style={styles.divider} />
-
-      {/* Run until solved */}
-      <button
-        onClick={onRunUntilSolved}
-        className="btn btn-danger"
-        disabled={!canStep}
-        style={{
-          ...styles.btn,
-          backgroundColor: !canStep ? '#2a2a4a' : '#8b2020',
-          color: '#fff',
-          opacity: !canStep ? 0.5 : 1,
-          width: '100%',
-        }}
-      >
-        Run Until Solved
-      </button>
+      )}
     </div>
   );
 };
@@ -148,15 +153,29 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     backgroundColor: '#1a1a2e',
     borderRadius: 8,
-    padding: 10,
+    padding: 16,
     border: '1px solid #2a2a4a',
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
   },
+  section: {
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontFamily: 'monospace',
+    color: '#6c5ce7',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    borderBottom: '1px solid #2a2a4a',
+    paddingBottom: 2,
+  },
   btnRow: {
     display: 'flex',
     gap: 4,
+    marginBottom: 4,
   },
   btn: {
     padding: '5px 10px',
@@ -165,6 +184,18 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#2a2a4a',
     color: '#e0e0e0',
     border: '1px solid #3a3a5a',
+    borderRadius: 4,
+    cursor: 'pointer',
+  },
+  newSessionBtn: {
+    width: '100%',
+    padding: '8px 16px',
+    fontSize: 13,
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    backgroundColor: '#6c5ce7',
+    color: '#fff',
+    border: 'none',
     borderRadius: 4,
     cursor: 'pointer',
   },
@@ -183,20 +214,32 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     accentColor: '#6c5ce7',
   },
-  divider: {
-    borderTop: '1px solid #2a2a4a',
-    margin: '2px 0',
+  granularityRow: {
+    display: 'flex',
+    gap: 2,
+    marginBottom: 6,
   },
-  select: {
+  granularityBtn: {
+    flex: 1,
     padding: '4px 6px',
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
-    borderRadius: 4,
-    width: 50,
-    flexShrink: 0,
+    borderRadius: 3,
+    cursor: 'pointer',
+    textAlign: 'center' as const,
+    transition: 'all 0.15s ease',
+  },
+  granularityBtnActive: {
+    backgroundColor: '#6c5ce7',
+    color: '#fff',
+    border: '1px solid #8b7cf0',
+    fontWeight: 'bold' as const,
+    boxShadow: '0 0 6px rgba(108, 92, 231, 0.4)',
+  },
+  granularityBtnInactive: {
+    backgroundColor: '#1a1a2e',
+    color: '#777',
+    border: '1px solid #2a2a4a',
   },
   textInput: {
     padding: '4px 6px',

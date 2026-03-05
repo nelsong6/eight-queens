@@ -8,6 +8,8 @@ interface Props {
   showAttacks?: boolean;
   /** Algorithm interval in ms — drives animation tier logic. Undefined = manual step. */
   speed?: number;
+  /** When true, the board scales up to fill its container */
+  zoomed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,9 +60,30 @@ const BOARD_PX = CELL_SIZE * BOARD_SIZE;
 const PAD = CELL_SIZE * 0.08;
 const SPRITE_SIZE = CELL_SIZE - PAD * 2;
 
-export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = true, speed }) => {
+export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = true, speed, zoomed = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [spriteLoaded, setSpriteLoaded] = useState(!!queenImage);
+  const [boardScale, setBoardScale] = useState(1);
+
+  // Scale board to fill wrapper when zoomed
+  useEffect(() => {
+    if (!zoomed || !wrapperRef.current) {
+      setBoardScale(1);
+      return;
+    }
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      // Reserve space for label (~20px) + info (~20px)
+      const availH = height - 50;
+      const s = Math.min(width / BOARD_PX, availH / BOARD_PX);
+      setBoardScale(Math.max(1, s));
+    });
+    observer.observe(wrapperRef.current);
+    return () => observer.disconnect();
+  }, [zoomed]);
 
   // Throttle state: the individual actually being rendered
   const [displayedIndividual, setDisplayedIndividual] = useState(individual);
@@ -157,9 +180,9 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
   const isSolved = displayedIndividual?.fitness === MAX_FITNESS;
 
   return (
-    <div style={styles.wrapper}>
-      {label && <div style={styles.label}>{label}</div>}
-      <div style={styles.boardContainer}>
+    <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs">
+      {label && <div style={styles.label} data-help="What the board is currently displaying — random placement, best individual, or solution">{label}</div>}
+      <div style={{ ...styles.boardContainer, transform: `scale(${boardScale})`, transformOrigin: 'top center' }}>
         <canvas
           ref={canvasRef}
           width={BOARD_PX}
@@ -188,7 +211,7 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
         ))}
       </div>
       {displayedIndividual && (
-        <div style={styles.info}>
+        <div style={styles.info} data-help="Chromosome (row positions for each column) and fitness score — 28/28 means no queens attack each other">
           [{displayedIndividual.solution.join(', ')}] &mdash; Fitness: {displayedIndividual.fitness}/{MAX_FITNESS}
         </div>
       )}

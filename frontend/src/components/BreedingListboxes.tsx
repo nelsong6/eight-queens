@@ -3,6 +3,7 @@ import type { Individual, GenerationBreedingData } from '../engine/types';
 
 interface Props {
   breedingData: GenerationBreedingData | null;
+  generation: number;
   onSelectIndividual: (individual: Individual, source: string) => void;
 }
 
@@ -65,8 +66,9 @@ const VirtualList: React.FC<{
 
 const vlStyles: Record<string, React.CSSProperties> = {
   scrollContainer: {
-    height: VISIBLE_HEIGHT,
-    overflowY: 'auto',
+    flex: 1,
+    minHeight: 100,
+    overflowY: 'auto' as const,
     backgroundColor: '#12122a',
     borderRadius: 4,
     border: '1px solid #2a2a4a',
@@ -91,7 +93,8 @@ const vlStyles: Record<string, React.CSSProperties> = {
   solution: { color: '#e0e0e0' },
   fitness: { color: '#ffd700', marginLeft: 4 },
   empty: {
-    height: VISIBLE_HEIGHT,
+    flex: 1,
+    minHeight: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -128,6 +131,7 @@ function getCategoryData(
 
 export const BreedingListboxes: React.FC<Props> = ({
   breedingData,
+  generation,
   onSelectIndividual,
 }) => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -147,12 +151,12 @@ export const BreedingListboxes: React.FC<Props> = ({
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title}>Breeding Data</div>
+      <div style={styles.title} data-help="Raw breeding data showing parents and children from each generation">Breeding Results — Gen {Math.max(generation, 1)}</div>
 
       {/* 2x2 grid: Parent A, Parent B, Child A, Child B */}
-      <div style={styles.grid}>
+      <div style={styles.grid} data-help="Click any individual to view its queen placement on the board">
         <div style={styles.listCol}>
-          <div style={styles.listHeader}>
+          <div style={styles.listHeader} data-help="First parent in each breeding pair — selected by roulette wheel">
             Parent A <span style={styles.count}>({breedingData?.aParents.length ?? 0})</span>
           </div>
           <VirtualList
@@ -162,7 +166,7 @@ export const BreedingListboxes: React.FC<Props> = ({
           />
         </div>
         <div style={styles.listCol}>
-          <div style={styles.listHeader}>
+          <div style={styles.listHeader} data-help="Second parent in each breeding pair — paired with Parent A for crossover">
             Parent B <span style={styles.count}>({breedingData?.bParents.length ?? 0})</span>
           </div>
           <VirtualList
@@ -172,7 +176,7 @@ export const BreedingListboxes: React.FC<Props> = ({
           />
         </div>
         <div style={styles.listCol}>
-          <div style={styles.listHeader}>
+          <div style={styles.listHeader} data-help="First child from crossover — gets Parent A's left genes and Parent B's right genes">
             Child A <span style={styles.count}>({breedingData?.aChildren.length ?? 0})</span>
           </div>
           <VirtualList
@@ -182,7 +186,7 @@ export const BreedingListboxes: React.FC<Props> = ({
           />
         </div>
         <div style={styles.listCol}>
-          <div style={styles.listHeader}>
+          <div style={styles.listHeader} data-help="Second child from crossover — gets Parent B's left genes and Parent A's right genes">
             Child B <span style={styles.count}>({breedingData?.bChildren.length ?? 0})</span>
           </div>
           <VirtualList
@@ -194,7 +198,7 @@ export const BreedingListboxes: React.FC<Props> = ({
       </div>
 
       {/* Iteration data dropdown */}
-      <div style={styles.dropdownRow}>
+      <div style={styles.dropdownRow} data-help="View different categories of population data from this generation">
         <label style={styles.dropdownLabel}>Iteration Data:</label>
         <select
           value={selectedCategory}
@@ -230,7 +234,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 12,
     border: '1px solid #2a2a4a',
-    flex: '1 1 300px',
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column' as const,
   },
   title: {
     fontSize: 12,
@@ -243,12 +250,16 @@ const styles: Record<string, React.CSSProperties> = {
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
+    gridTemplateRows: '1fr 1fr',
     gap: 8,
+    flex: 1,
+    minHeight: 0,
   },
   listCol: {
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'column' as const,
     gap: 4,
+    minHeight: 0,
   },
   listHeader: {
     fontSize: 11,

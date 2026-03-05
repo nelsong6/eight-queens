@@ -58,14 +58,14 @@ export function useAlgorithm() {
     setRunning(false);
   }, []);
 
-  const runOne = useCallback(() => {
+  const runOne = useCallback((): GenerationResult | null => {
     const runner = runnerRef.current;
-    if (!runner) return;
+    if (!runner) return null;
 
     const result = runner.runGeneration();
     if (!result) {
       stopInterval();
-      return;
+      return null;
     }
 
     applyResult(result);
@@ -73,6 +73,7 @@ export function useAlgorithm() {
     if (result.solved) {
       stopInterval();
     }
+    return result;
   }, [applyResult, stopInterval]);
 
   const start = useCallback(
@@ -92,11 +93,8 @@ export function useAlgorithm() {
       setLastResult(null);
       setAlgorithmConfig(config);
       setCumulativeStats(null);
-      setRunning(true);
-
-      intervalRef.current = setInterval(runOne, speedToDelay(speed));
     },
-    [stopInterval, runOne, speed],
+    [stopInterval],
   );
 
   const resume = useCallback(() => {
@@ -110,9 +108,9 @@ export function useAlgorithm() {
     stopInterval();
   }, [stopInterval]);
 
-  const stepOnce = useCallback(() => {
+  const stepOnce = useCallback((): GenerationResult | null => {
     stopInterval();
-    runOne();
+    return runOne();
   }, [stopInterval, runOne]);
 
   const stepN = useCallback(
@@ -146,51 +144,11 @@ export function useAlgorithm() {
     [stopInterval],
   );
 
-  const runUntilSolved = useCallback(() => {
-    const runner = runnerRef.current;
-    if (!runner || runner.solved) return;
-    stopInterval();
-    setRunning(true);
-
-    const tick = () => {
-      const r = runnerRef.current;
-      if (!r || r.solved) {
-        stopInterval();
-        return;
-      }
-
-      const multi = r.runGenerations(1000);
-      if (!multi) {
-        stopInterval();
-        return;
-      }
-
-      const { finalResult, summaries } = multi;
-      setGeneration(finalResult.generationNumber);
-      setBestFitness(finalResult.bestFitness);
-      setAvgFitness(finalResult.avgFitness);
-      setBestIndividual(finalResult.bestIndividual);
-      setSolved(finalResult.solved);
-      setLastResult(finalResult);
-
-      if (finalResult.solved && finalResult.solutionIndividual) {
-        setSolutionIndividual(finalResult.solutionIndividual);
-      }
-
-      setGenerationSummaries((prev) => [...prev, ...summaries]);
-      setCumulativeStats({ ...r.cumulativeStats });
-
-      if (finalResult.solved) {
-        stopInterval();
-      }
-    };
-
-    intervalRef.current = setInterval(tick, 0);
-  }, [stopInterval]);
-
   const reset = useCallback(() => {
     stopInterval();
     runnerRef.current = null;
+    setRunning(false);
+    setSpeed(1);
     setGeneration(0);
     setBestFitness(0);
     setAvgFitness(0);
@@ -233,7 +191,6 @@ export function useAlgorithm() {
     pause,
     step: stepOnce,
     stepN,
-    runUntilSolved,
     reset,
   };
 }

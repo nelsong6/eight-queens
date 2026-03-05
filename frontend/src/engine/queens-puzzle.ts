@@ -47,6 +47,7 @@ export class QueensPuzzle {
   private _aChildren: Individual[];
   private _bChildren: Individual[];
   private _mutations: Individual[];
+  private _crossoverPoints: number[];
   private _avgFitnessEligibleParents: number;
 
   constructor(config: AlgorithmConfig) {
@@ -65,6 +66,7 @@ export class QueensPuzzle {
     this._aChildren = [];
     this._bChildren = [];
     this._mutations = [];
+    this._crossoverPoints = [];
     this._avgFitnessEligibleParents = 0;
   }
 
@@ -150,6 +152,7 @@ export class QueensPuzzle {
       mutations: this._mutations,
       eligibleParents: [...this.parents],
       allChildren: [...this.children],
+      crossoverPoints: this._crossoverPoints,
     };
 
     return {
@@ -210,6 +213,7 @@ export class QueensPuzzle {
     this._aChildren = [];
     this._bChildren = [];
     this._mutations = [];
+    this._crossoverPoints = [];
   }
 
   // --------------------------------------------------------------------------
@@ -295,6 +299,7 @@ export class QueensPuzzle {
       // Single-point crossover at random position within range
       const [minPos, maxPos] = this.config.crossoverRange;
       const crossoverPos = randomInt(minPos, maxPos);
+      this._crossoverPoints.push(crossoverPos);
 
       // Swap genes from crossover position onwards
       for (let i = crossoverPos; i < 8; i++) {

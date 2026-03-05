@@ -22,21 +22,23 @@ export const StatusBar: React.FC<Props> = ({
   return (
     <div style={styles.panel}>
       <div style={styles.row}>
-        <Stat label="Generation" value={generation.toLocaleString()} />
+        <Stat label="Generation" value={generation.toLocaleString()} help="Number of evolutionary cycles completed so far" />
         <Stat
           label="Best Fitness"
           value={`${bestFitness}/${MAX_FITNESS}`}
           highlight={bestFitness === MAX_FITNESS}
+          help="Highest fitness score in the current population — 28/28 means a valid solution"
         />
-        <Stat label="Avg Fitness" value={avgFitness.toFixed(1)} />
+        <Stat label="Avg Fitness" value={avgFitness.toFixed(1)} help="Mean fitness across all individuals in the current generation" />
         <Stat
           label="Status"
           value={solved ? 'SOLVED' : generation === 0 ? 'Ready' : 'Running'}
           highlight={solved}
+          help="Current state of the algorithm — Ready, Running, or Solved"
         />
       </div>
       {algorithmConfig && (
-        <div style={styles.configRow}>
+        <div style={styles.configRow} data-help="Active algorithm parameters for this session">
           Pop: {algorithmConfig.populationSize.toLocaleString()} | Crossover: [
           {algorithmConfig.crossoverRange[0]},{algorithmConfig.crossoverRange[1]}] |
           Mutation: {(algorithmConfig.mutationRate * 100).toFixed(0)}%
@@ -53,8 +55,9 @@ const Stat: React.FC<{
   label: string;
   value: string;
   highlight?: boolean;
-}> = ({ label, value, highlight }) => (
-  <div style={styles.stat}>
+  help?: string;
+}> = ({ label, value, highlight, help }) => (
+  <div style={styles.stat} data-help={help}>
     <span style={styles.statLabel}>{label}</span>
     <span
       style={{

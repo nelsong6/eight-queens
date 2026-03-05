@@ -118,8 +118,8 @@ export const GenerationChart: React.FC<Props> = ({ generationSummaries }) => {
   }, [generationSummaries]);
 
   return (
-    <div style={styles.panel}>
-      <h3 style={styles.title}>Fitness Over Generations</h3>
+    <div style={styles.panel} data-help="Fitness over generations — gold line is best fitness, purple is average, green dashed line is the solution threshold (28)">
+      <h3 style={styles.title} data-help="Tracks how best and average fitness evolve as generations progress">Fitness Over Generations</h3>
       <canvas
         ref={canvasRef}
         width={CHART_WIDTH}
@@ -136,7 +136,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 16,
     border: '1px solid #2a2a4a',
-    flex: '1 1 300px',
+    flex: 1,
+    maxWidth: 400,
   },
   title: {
     margin: '0 0 10px 0',

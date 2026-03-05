@@ -79,6 +79,8 @@ export interface GenerationBreedingData {
   mutations: Individual[];
   eligibleParents: Individual[];
   allChildren: Individual[];
+  /** crossoverPoints[i] = splice position used for breeding pair i. */
+  crossoverPoints: number[];
 }
 
 /**
