@@ -9,6 +9,7 @@ interface Props {
   onPause: () => void;
   onStep: () => void;
   onStepN: (count: number) => void;
+  onReset: () => void;
   onNewSession: () => void;
   speed: number;
   onSpeedChange: (speed: number) => void;
@@ -27,6 +28,7 @@ export const Controls: React.FC<Props> = ({
   onPause,
   onStep,
   onStepN,
+  onReset,
   onNewSession,
   speed,
   onSpeedChange,
@@ -39,6 +41,7 @@ export const Controls: React.FC<Props> = ({
 
   const canAct = !isRunning && !solved;
   const isWalking = walkthroughPhase !== null;
+  const isMicro = granularity === 'micro';
 
   return (
     <div style={styles.bar}>
@@ -74,6 +77,12 @@ export const Controls: React.FC<Props> = ({
 
       {/* Playback */}
       <div style={styles.group}>
+        <button onClick={onReset} className="btn" data-help="Clear all progress and return to configuration" style={styles.btn} title="Rewind">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="12,4 2,12 12,20" />
+            <polygon points="22,4 12,12 22,20" />
+          </svg>
+        </button>
         {isRunning ? (
           <button onClick={onPause} className="btn" data-help="Pause auto-run" style={styles.btn}>
             ⏸
@@ -94,35 +103,43 @@ export const Controls: React.FC<Props> = ({
       <div style={styles.divider} />
 
       {/* Step controls — split button */}
-      <div style={styles.splitGroup} data-help={isWalking ? 'Advance to the next walkthrough phase' : 'Advance by N generations — pick a preset or type a custom number'}>
-        <input
-          list="step-presets"
-          value={stepCount}
-          onChange={(e) => setStepCount(e.target.value)}
-          disabled={solved || isWalking}
-          style={{ ...styles.splitInput, opacity: solved || isWalking ? 0.5 : 1 }}
-        />
-        <datalist id="step-presets">
-          {STEP_PRESETS.map((n) => (
-            <option key={n} value={n} />
-          ))}
-        </datalist>
+      <div style={styles.splitGroup} data-help={isMicro ? 'Advance to the next walkthrough phase' : 'Advance by N generations — pick a preset or type a custom number'}>
+        {isMicro ? (
+          <span style={{ ...styles.splitInput, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {walkthroughPhase !== null ? `${walkthroughPhase + 1}/4` : '0/4'}
+          </span>
+        ) : (
+          <>
+            <input
+              list="step-presets"
+              value={stepCount}
+              onChange={(e) => setStepCount(e.target.value)}
+              disabled={solved}
+              style={{ ...styles.splitInput, opacity: solved ? 0.5 : 1 }}
+            />
+            <datalist id="step-presets">
+              {STEP_PRESETS.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </>
+        )}
         <button
           onClick={() => {
-            if (isWalking) { onStep(); return; }
+            if (isMicro) { onStep(); return; }
             const n = parseInt(stepCount, 10);
             if (n === 1) onStep();
             else if (n > 1) onStepN(n);
           }}
           className="btn"
-          disabled={isWalking ? false : (!canAct || !stepCount || !/^\d+$/.test(stepCount) || parseInt(stepCount, 10) < 1)}
+          disabled={isMicro ? (!canAct && !isWalking) : (!canAct || !stepCount || !/^\d+$/.test(stepCount) || parseInt(stepCount, 10) < 1)}
           style={{
             ...styles.splitBtn,
             opacity: (!canAct && !isWalking) ? 0.5 : 1,
-            backgroundColor: isWalking ? '#4a3a8a' : '#2a2a4a',
+            backgroundColor: isMicro ? '#4a3a8a' : '#2a2a4a',
           }}
         >
-          {isWalking ? `⏭ ${walkthroughPhase! + 1}/4` : '⏭'}
+          ⏭
         </button>
       </div>
 

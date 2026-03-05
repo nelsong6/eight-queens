@@ -295,12 +295,6 @@ const App: React.FC = () => {
           <div style={styles.headerLeft}>
             <div style={styles.titleRow}>
               <h1 style={styles.title} data-help="Place 8 queens on a chessboard so none attack each other — solved by evolving random placements">Eight Queens: Genetic Algorithm</h1>
-              <button onClick={handleReset} className="btn" data-help="Clear all progress and return to configuration" style={styles.resetBtn} title="Reset">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="23 4 23 10 17 10" />
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                </svg>
-              </button>
             </div>
             <p style={styles.subtitle} data-help="Uses selection, crossover, and mutation to breed better solutions each generation">
               Evolving solutions to the classic 8-queens puzzle
@@ -333,6 +327,7 @@ const App: React.FC = () => {
           onPause={handlePause}
           onStep={granularity === 'micro' ? handleWalkThrough : handleStep}
           onStepN={handleStepN}
+          onReset={handleReset}
           onNewSession={handleNewSession}
           speed={algorithm.speed}
           onSpeedChange={algorithm.setSpeed}
@@ -363,8 +358,8 @@ const App: React.FC = () => {
 
       {/* Main content */}
       <div ref={mainRef} style={styles.main}>
-        {/* Top row: Board | Session Data */}
-        <div style={styles.topRow}>
+        <div style={styles.columns}>
+          {/* Column 1: Board */}
           <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
             <Chessboard
               individual={displayIndividual}
@@ -375,7 +370,8 @@ const App: React.FC = () => {
             />
           </ZoomablePanel>
 
-          <div style={styles.wing}>
+          {/* Column 2: Config */}
+          <div style={styles.column}>
             <ZoomablePanel id="config" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
               <ConfigPanel
                 key={`config-${resetKey}`}
@@ -393,56 +389,59 @@ const App: React.FC = () => {
               />
             </ZoomablePanel>
           </div>
-        </div>
 
-        {/* Bottom row: Breeding/Walkthrough, Chart, RunHistory */}
-        <div style={styles.bottomRow}>
-          <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '0 1 auto', minWidth: 0 }}>
-            <DrillDownTransition
-              isActive={granularity === 'micro' && walkthroughState !== null}
-              normalContent={
-                <BreedingListboxes
-                  breedingData={granularity === 'micro' ? null : (algorithm.lastResult?.breedingData ?? null)}
-                  generation={algorithm.generation}
-                  onSelectIndividual={handleSelectIndividual}
-                />
-              }
-              drillDownContent={
-                walkthroughState ? (
-                  walkthroughState.phase === 0 ? (
-                    <SelectionPhase result={walkthroughState.result} />
-                  ) : walkthroughState.phase === 1 ? (
-                    <CrossoverPhase
-                      result={walkthroughState.result}
-                      pairIndex={walkthroughState.browsePairIndex}
-                      onPairChange={handleWalkthroughPairChange}
-                      onSelectIndividual={handleSelectIndividual}
-                    />
-                  ) : walkthroughState.phase === 2 ? (
-                    <MutationPhase result={walkthroughState.result} />
+          {/* Column 3: Breeding */}
+          <div style={styles.column}>
+            <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+              <DrillDownTransition
+                isActive={granularity === 'micro' && walkthroughState !== null}
+                normalContent={
+                  <BreedingListboxes
+                    breedingData={granularity === 'micro' ? null : (algorithm.lastResult?.breedingData ?? null)}
+                    generation={algorithm.generation}
+                    onSelectIndividual={handleSelectIndividual}
+                  />
+                }
+                drillDownContent={
+                  walkthroughState ? (
+                    walkthroughState.phase === 0 ? (
+                      <SelectionPhase result={walkthroughState.result} />
+                    ) : walkthroughState.phase === 1 ? (
+                      <CrossoverPhase
+                        result={walkthroughState.result}
+                        pairIndex={walkthroughState.browsePairIndex}
+                        onPairChange={handleWalkthroughPairChange}
+                        onSelectIndividual={handleSelectIndividual}
+                      />
+                    ) : walkthroughState.phase === 2 ? (
+                      <MutationPhase result={walkthroughState.result} />
+                    ) : (
+                      <ResultsPhase result={walkthroughState.result} />
+                    )
                   ) : (
-                    <ResultsPhase result={walkthroughState.result} />
+                    <SelectionPhase />
                   )
-                ) : (
-                  <SelectionPhase />
-                )
-              }
-            />
-          </ZoomablePanel>
+                }
+              />
+            </ZoomablePanel>
+          </div>
 
-          <ZoomablePanel id="chart" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '0 1 auto', maxWidth: 400 }}>
-            <GenerationChart generationSummaries={algorithm.generationSummaries} />
-          </ZoomablePanel>
+          {/* Column 4: Chart + RunHistory */}
+          <div style={styles.column}>
+            <ZoomablePanel id="chart" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+              <GenerationChart generationSummaries={algorithm.generationSummaries} />
+            </ZoomablePanel>
 
-          <ZoomablePanel id="history" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} style={{ flex: '1 1 300px', minWidth: 0 }}>
-            <RunHistory
-              runs={apiHook.runs}
-              onLoadRun={handleLoadRun}
-              onDeleteRun={apiHook.deleteRun}
-              isAuthenticated={!!auth.user}
-              loading={apiHook.loading}
-            />
-          </ZoomablePanel>
+            <ZoomablePanel id="history" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
+              <RunHistory
+                runs={apiHook.runs}
+                onLoadRun={handleLoadRun}
+                onDeleteRun={apiHook.deleteRun}
+                isAuthenticated={!!auth.user}
+                loading={apiHook.loading}
+              />
+            </ZoomablePanel>
+          </div>
         </div>
       </div>
     </div>
@@ -487,17 +486,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-  },
-  resetBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 6,
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
-    borderRadius: 4,
-    cursor: 'pointer',
   },
   headerRight: {
     display: 'flex',
@@ -547,34 +535,20 @@ const styles: Record<string, React.CSSProperties> = {
   main: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: 16,
     padding: '20px 24px',
     maxWidth: 1800,
     margin: '0 auto',
   },
-  topRow: {
+  columns: {
     display: 'flex',
     gap: 12,
     alignItems: 'flex-start',
-    justifyContent: 'center',
   },
-  wing: {
-    flex: '0 1 480px',
+  column: {
+    flex: '1 1 0',
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 8,
-    alignItems: 'stretch',
     minWidth: 0,
-  },
-  sidePanel: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 8,
-    flexShrink: 0,
-  },
-  bottomRow: {
-    display: 'flex',
-    gap: 12,
-    flexWrap: 'wrap' as const,
   },
 };

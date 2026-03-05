@@ -12,7 +12,7 @@ interface Props {
 // ---------------------------------------------------------------------------
 
 const ITEM_HEIGHT = 22;
-const VISIBLE_HEIGHT = 200;
+const VISIBLE_HEIGHT = 150;
 const OVERSCAN = 3;
 
 const VirtualList: React.FC<{
@@ -75,8 +75,7 @@ const VirtualList: React.FC<{
 
 const vlStyles: Record<string, React.CSSProperties> = {
   scrollContainer: {
-    flex: 1,
-    minHeight: 100,
+    height: VISIBLE_HEIGHT,
     overflowY: 'auto' as const,
     backgroundColor: '#12122a',
     borderRadius: 4,
@@ -102,8 +101,7 @@ const vlStyles: Record<string, React.CSSProperties> = {
   solution: { color: '#e0e0e0' },
   fitness: { color: '#ffd700', marginLeft: 4 },
   empty: {
-    flex: 1,
-    minHeight: 100,
+    height: VISIBLE_HEIGHT,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -269,7 +267,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: '32ch 32ch',
+    gridTemplateColumns: '1fr 1fr',
     gridTemplateRows: '1fr 1fr',
     gap: 8,
     flex: 1,
