@@ -12,6 +12,8 @@ import {
   AlgorithmConfig,
   Individual,
   GenerationResult,
+  GenerationBreedingData,
+  StepStatistics,
   MAX_FITNESS,
 } from './types';
 import {
@@ -39,6 +41,14 @@ export class QueensPuzzle {
   private _lastChildA: Individual | null;
   private _lastChildB: Individual | null;
 
+  // Full breeding data (all pairs per generation)
+  private _aParents: Individual[];
+  private _bParents: Individual[];
+  private _aChildren: Individual[];
+  private _bChildren: Individual[];
+  private _mutations: Individual[];
+  private _avgFitnessEligibleParents: number;
+
   constructor(config: AlgorithmConfig) {
     this.config = { ...config };
     this.parents = [];
@@ -50,6 +60,12 @@ export class QueensPuzzle {
     this._lastParentB = null;
     this._lastChildA = null;
     this._lastChildB = null;
+    this._aParents = [];
+    this._bParents = [];
+    this._aChildren = [];
+    this._bChildren = [];
+    this._mutations = [];
+    this._avgFitnessEligibleParents = 0;
   }
 
   // --------------------------------------------------------------------------
@@ -82,16 +98,59 @@ export class QueensPuzzle {
 
     // Calculate stats
     let bestChild = this.children[0]!;
-    let totalFitness = 0;
+    let totalChildFitness = 0;
 
     for (const child of this.children) {
-      totalFitness += child.fitness;
+      totalChildFitness += child.fitness;
       if (child.fitness > bestChild.fitness) {
         bestChild = child;
       }
     }
 
-    const avgFitness = totalFitness / this.children.length;
+    const avgFitness = totalChildFitness / this.children.length;
+
+    // Deduplicate actual parents by ID
+    const seenIds = new Set<number>();
+    const actualParents: Individual[] = [];
+    for (const p of [...this._aParents, ...this._bParents]) {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        actualParents.push(p);
+      }
+    }
+    actualParents.sort((a, b) => b.fitness - a.fitness);
+
+    // Compute per-step statistics
+    const avgFitnessActualParents = actualParents.length > 0
+      ? actualParents.reduce((s, p) => s + p.fitness, 0) / actualParents.length
+      : 0;
+    const avgFitnessChildren = this.children.length > 0
+      ? totalChildFitness / this.children.length
+      : 0;
+
+    const stepStatistics: StepStatistics = {
+      eligibleParentsCount: this.parents.length,
+      avgFitnessEligibleParents: this._avgFitnessEligibleParents,
+      actualParentsCount: actualParents.length,
+      avgFitnessActualParents,
+      childrenCount: this.children.length,
+      avgFitnessChildren,
+      mutationCount,
+    };
+
+    // Sort breeding lists by fitness for display
+    this._mutations.sort((a, b) => b.fitness - a.fitness);
+
+    const breedingData: GenerationBreedingData = {
+      aParents: this._aParents,
+      bParents: this._bParents,
+      aChildren: this._aChildren,
+      bChildren: this._bChildren,
+      actualParents,
+      mutations: this._mutations,
+      eligibleParents: [...this.parents],
+      allChildren: [...this.children],
+    };
 
     return {
       generationNumber: this._generation,
@@ -107,6 +166,8 @@ export class QueensPuzzle {
       lastParentB: this._lastParentB,
       lastChildA: this._lastChildA,
       lastChildB: this._lastChildB,
+      breedingData,
+      stepStatistics,
     };
   }
 
@@ -119,7 +180,7 @@ export class QueensPuzzle {
       // First generation: create random population
       this.parents = [];
       for (let i = 0; i < this.config.populationSize; i++) {
-        this.parents.push(createRandomIndividual());
+        this.parents.push(createRandomIndividual(i));
       }
     } else {
       // Subsequent generations: children become parents
@@ -129,12 +190,26 @@ export class QueensPuzzle {
     // Sort parents by fitness descending
     this.parents.sort((a, b) => b.fitness - a.fitness);
 
-    // Reset children
+    // Compute avg fitness of eligible parents
+    let totalFitness = 0;
+    for (const parent of this.parents) {
+      totalFitness += parent.fitness;
+    }
+    this._avgFitnessEligibleParents = this.parents.length > 0
+      ? totalFitness / this.parents.length
+      : 0;
+
+    // Reset children and breeding lists
     this.children = [];
     this._lastParentA = null;
     this._lastParentB = null;
     this._lastChildA = null;
     this._lastChildB = null;
+    this._aParents = [];
+    this._bParents = [];
+    this._aChildren = [];
+    this._bChildren = [];
+    this._mutations = [];
   }
 
   // --------------------------------------------------------------------------
@@ -207,9 +282,15 @@ export class QueensPuzzle {
       } while (parentBIndex === parentAIndex && this.parents.length > 1);
       const parentB = this.parents[parentBIndex]!;
 
+      // Track breeding pairs
+      this._aParents.push(parentA);
+      this._bParents.push(parentB);
+
       // Create children via crossover
       const childA = cloneIndividual(parentA);
+      childA.id = this.children.length;
       const childB = cloneIndividual(parentB);
+      childB.id = this.children.length + 1;
 
       // Single-point crossover at random position within range
       const [minPos, maxPos] = this.config.crossoverRange;
@@ -227,10 +308,20 @@ export class QueensPuzzle {
       childB.fitness = assessFitness(childB.solution);
 
       // Apply mutation
-      if (mutate(childA, this.config.mutationRate)) mutationCount++;
-      if (mutate(childB, this.config.mutationRate)) mutationCount++;
+      if (mutate(childA, this.config.mutationRate)) {
+        mutationCount++;
+        this._mutations.push(childA);
+      }
+      if (mutate(childB, this.config.mutationRate)) {
+        mutationCount++;
+        this._mutations.push(childB);
+      }
 
-      // Store visualization data
+      // Track children
+      this._aChildren.push(childA);
+      this._bChildren.push(childB);
+
+      // Store visualization data (last pair)
       this._lastParentA = cloneIndividual(parentA);
       this._lastParentB = cloneIndividual(parentB);
       this._lastChildA = cloneIndividual(childA);

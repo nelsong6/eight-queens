@@ -8,6 +8,7 @@ interface Props {
   avgFitness: number;
   solved: boolean;
   algorithmConfig: AlgorithmConfig | null;
+  message?: string;
 }
 
 export const StatusBar: React.FC<Props> = ({
@@ -16,6 +17,7 @@ export const StatusBar: React.FC<Props> = ({
   avgFitness,
   solved,
   algorithmConfig,
+  message,
 }) => {
   return (
     <div style={styles.panel}>
@@ -39,6 +41,9 @@ export const StatusBar: React.FC<Props> = ({
           {algorithmConfig.crossoverRange[0]},{algorithmConfig.crossoverRange[1]}] |
           Mutation: {(algorithmConfig.mutationRate * 100).toFixed(0)}%
         </div>
+      )}
+      {message && (
+        <div style={styles.message}>{message}</div>
       )}
     </div>
   );
@@ -66,33 +71,45 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     backgroundColor: '#1a1a2e',
     borderRadius: 8,
-    padding: 12,
+    padding: 10,
     border: '1px solid #2a2a4a',
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
   },
   row: {
-    display: 'flex',
-    gap: 20,
-    flexWrap: 'wrap',
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '6px 10px',
   },
   configRow: {
-    marginTop: 8,
-    fontSize: 10,
+    marginTop: 6,
+    fontSize: 9,
     fontFamily: 'monospace',
     color: '#777',
+    lineHeight: 1.3,
+    wordBreak: 'break-all' as const,
+  },
+  message: {
+    marginTop: 6,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    color: '#ccc',
+    lineHeight: 1.3,
   },
   stat: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 2,
+    gap: 1,
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: 'monospace',
     color: '#777',
     textTransform: 'uppercase',
   },
   statValue: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'monospace',
     fontWeight: 'bold',
   },

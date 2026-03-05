@@ -1,5 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
-import type { AlgorithmConfig, GenerationResult, GenerationSummary, Individual } from '../engine/types';
+import type {
+  AlgorithmConfig,
+  CumulativeStatistics,
+  GenerationResult,
+  GenerationSummary,
+  Individual,
+} from '../engine/types';
 import { AlgorithmRunner } from '../engine/algorithm-runner';
 
 export function useAlgorithm() {
@@ -7,7 +13,8 @@ export function useAlgorithm() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [running, setRunning] = useState(false);
-  const [speed, setSpeed] = useState(100); // ms between generations
+  const [speed, setSpeed] = useState(1); // speed value (1-500); delay = 501 - speed
+  const speedToDelay = (s: number) => Math.max(1, 501 - s);
   const [generation, setGeneration] = useState(0);
   const [bestFitness, setBestFitness] = useState(0);
   const [avgFitness, setAvgFitness] = useState(0);
@@ -17,6 +24,7 @@ export function useAlgorithm() {
   const [generationSummaries, setGenerationSummaries] = useState<GenerationSummary[]>([]);
   const [lastResult, setLastResult] = useState<GenerationResult | null>(null);
   const [algorithmConfig, setAlgorithmConfig] = useState<AlgorithmConfig | null>(null);
+  const [cumulativeStats, setCumulativeStats] = useState<CumulativeStatistics | null>(null);
 
   const applyResult = useCallback((result: GenerationResult) => {
     setGeneration(result.generationNumber);
@@ -34,6 +42,12 @@ export function useAlgorithm() {
       ...prev,
       AlgorithmRunner.toSummary(result),
     ]);
+
+    // Update cumulative stats from runner
+    const runner = runnerRef.current;
+    if (runner) {
+      setCumulativeStats({ ...runner.cumulativeStats });
+    }
   }, []);
 
   const stopInterval = useCallback(() => {
@@ -77,9 +91,10 @@ export function useAlgorithm() {
       setGenerationSummaries([]);
       setLastResult(null);
       setAlgorithmConfig(config);
+      setCumulativeStats(null);
       setRunning(true);
 
-      intervalRef.current = setInterval(runOne, speed);
+      intervalRef.current = setInterval(runOne, speedToDelay(speed));
     },
     [stopInterval, runOne, speed],
   );
@@ -88,7 +103,7 @@ export function useAlgorithm() {
     if (!runnerRef.current || solved) return;
     stopInterval();
     setRunning(true);
-    intervalRef.current = setInterval(runOne, speed);
+    intervalRef.current = setInterval(runOne, speedToDelay(speed));
   }, [runOne, speed, stopInterval, solved]);
 
   const pause = useCallback(() => {
@@ -99,6 +114,79 @@ export function useAlgorithm() {
     stopInterval();
     runOne();
   }, [stopInterval, runOne]);
+
+  const stepN = useCallback(
+    (count: number) => {
+      stopInterval();
+      const runner = runnerRef.current;
+      if (!runner) return;
+
+      const multi = runner.runGenerations(count);
+      if (!multi) return;
+
+      // Apply final result for UI (breeding data, etc.)
+      const { finalResult, summaries } = multi;
+      setGeneration(finalResult.generationNumber);
+      setBestFitness(finalResult.bestFitness);
+      setAvgFitness(finalResult.avgFitness);
+      setBestIndividual(finalResult.bestIndividual);
+      setSolved(finalResult.solved);
+      setLastResult(finalResult);
+
+      if (finalResult.solved && finalResult.solutionIndividual) {
+        setSolutionIndividual(finalResult.solutionIndividual);
+      }
+
+      // Add all intermediate summaries to chart
+      setGenerationSummaries((prev) => [...prev, ...summaries]);
+
+      // Update cumulative stats
+      setCumulativeStats({ ...runner.cumulativeStats });
+    },
+    [stopInterval],
+  );
+
+  const runUntilSolved = useCallback(() => {
+    const runner = runnerRef.current;
+    if (!runner || runner.solved) return;
+    stopInterval();
+    setRunning(true);
+
+    const tick = () => {
+      const r = runnerRef.current;
+      if (!r || r.solved) {
+        stopInterval();
+        return;
+      }
+
+      const multi = r.runGenerations(1000);
+      if (!multi) {
+        stopInterval();
+        return;
+      }
+
+      const { finalResult, summaries } = multi;
+      setGeneration(finalResult.generationNumber);
+      setBestFitness(finalResult.bestFitness);
+      setAvgFitness(finalResult.avgFitness);
+      setBestIndividual(finalResult.bestIndividual);
+      setSolved(finalResult.solved);
+      setLastResult(finalResult);
+
+      if (finalResult.solved && finalResult.solutionIndividual) {
+        setSolutionIndividual(finalResult.solutionIndividual);
+      }
+
+      setGenerationSummaries((prev) => [...prev, ...summaries]);
+      setCumulativeStats({ ...r.cumulativeStats });
+
+      if (finalResult.solved) {
+        stopInterval();
+      }
+    };
+
+    intervalRef.current = setInterval(tick, 0);
+  }, [stopInterval]);
 
   const reset = useCallback(() => {
     stopInterval();
@@ -112,6 +200,7 @@ export function useAlgorithm() {
     setGenerationSummaries([]);
     setLastResult(null);
     setAlgorithmConfig(null);
+    setCumulativeStats(null);
   }, [stopInterval]);
 
   const handleSpeedChange = useCallback(
@@ -119,7 +208,7 @@ export function useAlgorithm() {
       setSpeed(newSpeed);
       if (running && intervalRef.current) {
         clearInterval(intervalRef.current);
-        intervalRef.current = setInterval(runOne, newSpeed);
+        intervalRef.current = setInterval(runOne, speedToDelay(newSpeed));
       }
     },
     [running, runOne],
@@ -138,10 +227,13 @@ export function useAlgorithm() {
     generationSummaries,
     lastResult,
     algorithmConfig,
+    cumulativeStats,
     start,
     resume,
     pause,
     step: stepOnce,
+    stepN,
+    runUntilSolved,
     reset,
   };
 }

@@ -10,12 +10,13 @@ import { assessFitness } from './fitness';
  * Create a random individual with 8 random queen positions.
  * Matches C# individual constructor.
  */
-export function createRandomIndividual(): Individual {
+export function createRandomIndividual(id: number): Individual {
   const solution: number[] = [];
   for (let i = 0; i < BOARD_SIZE; i++) {
     solution.push(randomInt(0, 7));
   }
   return {
+    id,
     solution,
     fitness: assessFitness(solution),
   };
@@ -24,8 +25,9 @@ export function createRandomIndividual(): Individual {
 /**
  * Create an individual from an existing solution array.
  */
-export function createIndividual(solution: number[]): Individual {
+export function createIndividual(id: number, solution: number[]): Individual {
   return {
+    id,
     solution: [...solution],
     fitness: assessFitness(solution),
   };
@@ -36,6 +38,7 @@ export function createIndividual(solution: number[]): Individual {
  */
 export function cloneIndividual(ind: Individual): Individual {
   return {
+    id: ind.id,
     solution: [...ind.solution],
     fitness: ind.fitness,
   };

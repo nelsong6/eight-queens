@@ -34,6 +34,8 @@ export const BOARD_SIZE = 8;
  * and value = row position of the queen in that column.
  */
 export interface Individual {
+  /** Unique ID within the generation. */
+  id: number;
   /** The solution array: index=column, value=row (0-7). */
   solution: number[];
   /** Fitness score (0-28). 28 = perfect solution. */
@@ -52,6 +54,47 @@ export interface GenerationSummary {
 }
 
 /**
+ * Per-step statistics matching C# queenspuzzle's "Totals This Step" groupbox.
+ */
+export interface StepStatistics {
+  eligibleParentsCount: number;
+  avgFitnessEligibleParents: number;
+  actualParentsCount: number;
+  avgFitnessActualParents: number;
+  childrenCount: number;
+  avgFitnessChildren: number;
+  mutationCount: number;
+}
+
+/**
+ * Detailed per-generation breeding data for listbox display.
+ * All arrays sorted by fitness descending.
+ */
+export interface GenerationBreedingData {
+  aParents: Individual[];
+  bParents: Individual[];
+  aChildren: Individual[];
+  bChildren: Individual[];
+  actualParents: Individual[];
+  mutations: Individual[];
+  eligibleParents: Individual[];
+  allChildren: Individual[];
+}
+
+/**
+ * Cumulative statistics across all generations.
+ * Matches C# queenspuzzle's "Totals" groupbox.
+ */
+export interface CumulativeStatistics {
+  totalEligibleParents: number;
+  avgFitnessIncrease: number;
+  totalActualParents: number;
+  totalChildren: number;
+  totalMutations: number;
+  iterationCount: number;
+}
+
+/**
  * Result of running a single generation step.
  */
 export interface GenerationResult {
@@ -67,4 +110,8 @@ export interface GenerationResult {
   lastParentB: Individual | null;
   lastChildA: Individual | null;
   lastChildB: Individual | null;
+  /** Full breeding data for listbox display. */
+  breedingData: GenerationBreedingData;
+  /** Per-step statistics. */
+  stepStatistics: StepStatistics;
 }

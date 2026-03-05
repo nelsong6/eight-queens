@@ -136,6 +136,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 16,
     border: '1px solid #2a2a4a',
+    flex: '1 1 300px',
   },
   title: {
     margin: '0 0 10px 0',

@@ -1,0 +1,35 @@
+/* Button interactive states */
+.btn:hover:not(:disabled) {
+  background-color: #3a3a5a !important;
+  border-color: #5a5a7a !important;
+}
+
+.btn:active:not(:disabled) {
+  background-color: #4a4a6a !important;
+  border-color: #6c5ce7 !important;
+  transform: scale(0.96);
+}
+
+.btn:disabled {
+  cursor: not-allowed !important;
+}
+
+.btn-start:hover:not(:disabled) {
+  background-color: #7d6ee8 !important;
+  filter: brightness(1.15);
+}
+
+.btn-start:active:not(:disabled) {
+  background-color: #5a4bd6 !important;
+  transform: scale(0.96);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #a52525 !important;
+  filter: brightness(1.15);
+}
+
+.btn-danger:active:not(:disabled) {
+  background-color: #6e1818 !important;
+  transform: scale(0.96);
+}

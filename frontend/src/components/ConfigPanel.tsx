@@ -6,26 +6,30 @@ import type { Preset } from '../api/client';
 interface Props {
   onStart: (config: AlgorithmConfig) => void;
   isRunning: boolean;
-  isAuthenticated: boolean;
   presets: Preset[];
 }
 
 export const ConfigPanel: React.FC<Props> = ({
   onStart,
   isRunning,
-  isAuthenticated,
   presets,
 }) => {
-  const [populationSize, setPopulationSize] = useState(DEFAULT_CONFIG.populationSize);
+  const [populationSize, setPopulationSize] = useState(100);
   const [crossoverMin, setCrossoverMin] = useState(DEFAULT_CONFIG.crossoverRange[0]);
   const [crossoverMax, setCrossoverMax] = useState(DEFAULT_CONFIG.crossoverRange[1]);
   const [mutationRate, setMutationRate] = useState(DEFAULT_CONFIG.mutationRate);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('quick-demo');
 
-  const handlePreset = (preset: Preset) => {
-    setPopulationSize(preset.config.populationSize);
-    setCrossoverMin(preset.config.crossoverRange[0]);
-    setCrossoverMax(preset.config.crossoverRange[1]);
-    setMutationRate(preset.config.mutationRate);
+  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    setSelectedPresetId(id);
+    const preset = presets.find((p) => p.id === id);
+    if (preset) {
+      setPopulationSize(preset.config.populationSize);
+      setCrossoverMin(preset.config.crossoverRange[0]);
+      setCrossoverMax(preset.config.crossoverRange[1]);
+      setMutationRate(preset.config.mutationRate);
+    }
   };
 
   const handleStart = () => {
@@ -40,79 +44,78 @@ export const ConfigPanel: React.FC<Props> = ({
     <div style={styles.panel}>
       <h3 style={styles.title}>Configuration</h3>
 
-      {/* Presets */}
-      <div style={styles.presetRow}>
+      {/* Preset dropdown */}
+      <select
+        value={selectedPresetId}
+        onChange={handlePresetChange}
+        disabled={isRunning}
+        style={styles.presetSelect}
+      >
+        <option value="">Custom</option>
         {presets.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => handlePreset(p)}
-            style={styles.presetBtn}
-            title={p.description}
-            disabled={isRunning}
-          >
+          <option key={p.id} value={p.id}>
             {p.name}
-          </button>
+          </option>
         ))}
+      </select>
+
+      {/* Always-visible controls */}
+      <div style={styles.sliders}>
+        <label style={styles.sliderLabel}>
+          Population: {populationSize.toLocaleString()}
+          <input
+            type="range"
+            min={50}
+            max={50000}
+            step={50}
+            value={populationSize}
+            onChange={(e) => { setSelectedPresetId(''); setPopulationSize(Number(e.target.value)); }}
+            disabled={isRunning}
+            style={styles.slider}
+          />
+        </label>
+
+        <label style={styles.sliderLabel}>
+          Crossover Range: [{crossoverMin}, {crossoverMax}]
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="range"
+              min={1}
+              max={6}
+              value={crossoverMin}
+              onChange={(e) => { setSelectedPresetId(''); setCrossoverMin(Number(e.target.value)); }}
+              disabled={isRunning}
+              style={styles.slider}
+            />
+            <input
+              type="range"
+              min={1}
+              max={6}
+              value={crossoverMax}
+              onChange={(e) => { setSelectedPresetId(''); setCrossoverMax(Number(e.target.value)); }}
+              disabled={isRunning}
+              style={styles.slider}
+            />
+          </div>
+        </label>
+
+        <label style={styles.sliderLabel}>
+          Mutation Rate: {(mutationRate * 100).toFixed(0)}%
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(mutationRate * 100)}
+            onChange={(e) => { setSelectedPresetId(''); setMutationRate(Number(e.target.value) / 100); }}
+            disabled={isRunning}
+            style={styles.slider}
+          />
+        </label>
       </div>
-
-      {/* Full controls */}
-      {isAuthenticated && (
-        <div style={styles.sliders}>
-          <label style={styles.sliderLabel}>
-            Population: {populationSize.toLocaleString()}
-            <input
-              type="range"
-              min={50}
-              max={50000}
-              step={50}
-              value={populationSize}
-              onChange={(e) => setPopulationSize(Number(e.target.value))}
-              disabled={isRunning}
-              style={styles.slider}
-            />
-          </label>
-
-          <label style={styles.sliderLabel}>
-            Crossover Range: [{crossoverMin}, {crossoverMax}]
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                type="range"
-                min={1}
-                max={6}
-                value={crossoverMin}
-                onChange={(e) => setCrossoverMin(Number(e.target.value))}
-                disabled={isRunning}
-                style={styles.slider}
-              />
-              <input
-                type="range"
-                min={1}
-                max={6}
-                value={crossoverMax}
-                onChange={(e) => setCrossoverMax(Number(e.target.value))}
-                disabled={isRunning}
-                style={styles.slider}
-              />
-            </div>
-          </label>
-
-          <label style={styles.sliderLabel}>
-            Mutation Rate: {(mutationRate * 100).toFixed(0)}%
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(mutationRate * 100)}
-              onChange={(e) => setMutationRate(Number(e.target.value) / 100)}
-              disabled={isRunning}
-              style={styles.slider}
-            />
-          </label>
-        </div>
-      )}
 
       <button
         onClick={handleStart}
+        className="btn btn-start"
         disabled={isRunning}
         style={{
           ...styles.startBtn,
@@ -131,6 +134,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 16,
     border: '1px solid #2a2a4a',
+    flex: '1 1 200px',
+    minWidth: 180,
   },
   title: {
     margin: '0 0 12px 0',
@@ -140,20 +145,16 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  presetRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 12,
-  },
-  presetBtn: {
-    padding: '6px 12px',
+  presetSelect: {
+    width: '100%',
+    padding: '6px 10px',
     fontSize: 12,
     fontFamily: 'monospace',
     backgroundColor: '#2a2a4a',
     color: '#e0e0e0',
     border: '1px solid #3a3a5a',
     borderRadius: 4,
+    marginBottom: 12,
     cursor: 'pointer',
   },
   sliders: {
