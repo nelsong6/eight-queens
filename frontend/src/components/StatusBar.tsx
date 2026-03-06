@@ -22,7 +22,7 @@ export const StatusBar: React.FC<Props> = ({
   return (
     <div style={styles.panel}>
       <div style={styles.row}>
-        <Stat label="Generation" value={generation.toLocaleString()} help="Number of evolutionary cycles completed so far" />
+        <Stat label="Current completed generation" value={generation.toLocaleString()} help="Number of evolutionary cycles completed so far" />
         <Stat
           label="Best Fitness"
           value={`${bestFitness}/${MAX_FITNESS}`}
