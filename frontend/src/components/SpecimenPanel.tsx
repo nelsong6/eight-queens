@@ -124,6 +124,10 @@ export const SpecimenPanel: React.FC<Props> = ({
             </span>
           ) : na}
         </Field>
+      </div>
+
+      {/* Row 2: Mutation */}
+      <div style={styles.row}>
         <Field label="Mutated" width={120} help="Whether a random gene was changed after crossover, and which gene was affected">
           {info?.mutationRecord ? (
             <span style={styles.mutation}>
@@ -135,7 +139,7 @@ export const SpecimenPanel: React.FC<Props> = ({
         </Field>
       </div>
 
-      {/* Row 2: Parentage (if child) */}
+      {/* Row 3: Parentage */}
       <div style={styles.row}>
         <Field label="Parent A" width={160} help="First parent used in the crossover that produced this child - click to inspect">
           {info?.parentA ? (
@@ -152,6 +156,10 @@ export const SpecimenPanel: React.FC<Props> = ({
             ? <span style={styles.val}>pos {info.crossoverPoint}</span>
             : na}
         </Field>
+      </div>
+
+      {/* Row 4: Sibling */}
+      <div style={styles.row}>
         <Field label="Sibling" width={160} help="The other child produced from the same crossover - click to inspect">
           {info?.sibling ? (
             <ClickableIndividual ind={info.sibling} color="#8a8" onClick={() => onSelectIndividual(info.sibling!, 'Sibling')} />
@@ -159,7 +167,7 @@ export const SpecimenPanel: React.FC<Props> = ({
         </Field>
       </div>
 
-      {/* Row 3: Breeding (if parent) */}
+      {/* Row 5: Breeding */}
       <div style={styles.row}>
         <Field label="Matings" width={80} help="How many times this individual was selected as a parent this generation, and with how many unique partners">
           {info?.matings.length
@@ -179,11 +187,6 @@ export const SpecimenPanel: React.FC<Props> = ({
                 </option>
               ))}
             </select>
-          ) : na}
-        </Field>
-        <Field label="Partner" width={160} help="The other parent in the selected mating event - click to inspect">
-          {selectedMating ? (
-            <ClickableIndividual ind={selectedMating.partner} color="#c49df7" onClick={() => onSelectIndividual(selectedMating.partner, 'Partner')} />
           ) : na}
         </Field>
         <Field label="Children" width={200} help="The two offspring produced by the selected mating event - select to inspect">
@@ -250,13 +253,14 @@ const styles: Record<string, React.CSSProperties> = {
   row: {
     display: 'flex',
     gap: 12,
-    flexWrap: 'wrap',
     alignItems: 'center',
+    minHeight: 20,
   },
   field: {
     display: 'flex',
     alignItems: 'center',
     gap: 4,
+    whiteSpace: 'nowrap',
   },
   fieldLabel: {
     fontSize: 9,

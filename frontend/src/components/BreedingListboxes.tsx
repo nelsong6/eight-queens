@@ -699,7 +699,7 @@ const ActualParentsList: React.FC<{
 const actualParentStyles: Record<string, React.CSSProperties> = {
   container: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(auto, 3fr) minmax(auto, 2fr)',
+    gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 1fr)',
     gap: 8,
     flex: 1,
     minHeight: 0,
