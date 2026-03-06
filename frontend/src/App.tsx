@@ -286,13 +286,8 @@ const App: React.FC = () => {
 
   // Display logic: viewed individual takes priority, fall back to initial random
   const displayIndividual = viewedIndividual ?? algorithm.solutionIndividual ?? algorithm.bestIndividual ?? initialIndividual;
-  const displayLabel = viewedIndividual
-    ? `Viewing: ${viewedSource}`
-    : algorithm.solved
-      ? 'Solution Found!'
-      : hasStarted
-        ? 'Best Individual'
-        : 'Random Placement';
+  const displayIsBest = displayIndividual != null && algorithm.bestIndividual != null && displayIndividual.id === algorithm.bestIndividual.id;
+  const displayIsSolution = displayIndividual != null && displayIndividual.fitness === 28;
 
   // Status message matching C# behavior
   const statusMessage = useMemo<{ label: string; value: string }>(() => {
@@ -377,7 +372,6 @@ const App: React.FC = () => {
             <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} companionRect={companionLayout?.boardRect}>
               <Chessboard
                 individual={displayIndividual}
-                label={displayLabel}
                 showAttacks={hasStarted}
                 speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
                 zoomed={zoomedPanel === 'board' || zoomedPanel === 'breeding'}
@@ -386,6 +380,8 @@ const App: React.FC = () => {
                 individual={displayIndividual}
                 breedingData={algorithm.lastResult?.breedingData ?? null}
                 generation={algorithm.generation}
+                isBest={displayIsBest}
+                isSolution={displayIsSolution}
                 onSelectIndividual={handleSelectIndividual}
               />
             </ZoomablePanel>

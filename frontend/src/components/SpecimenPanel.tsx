@@ -5,6 +5,8 @@ interface Props {
   individual: Individual | null;
   breedingData: GenerationBreedingData | null;
   generation: number;
+  isBest: boolean;
+  isSolution: boolean;
   onSelectIndividual: (individual: Individual, source: string) => void;
 }
 
@@ -19,6 +21,8 @@ export const SpecimenPanel: React.FC<Props> = ({
   individual,
   breedingData,
   generation,
+  isBest,
+  isSolution,
   onSelectIndividual,
 }) => {
   const [matingIndex, setMatingIndex] = useState(0);
@@ -95,129 +99,119 @@ export const SpecimenPanel: React.FC<Props> = ({
 
   return (
     <div style={styles.panel} data-help="Specimen inspector - click any individual in the population lists to see its details, lineage, and breeding history">
-      {/* Row 1: Identity */}
-      <div style={styles.row}>
-        <Field label="Specimen" width={80} help="Unique ID of this individual within the population">
-          {individual ? <span style={styles.id}>#{individual.id}</span> : na}
-        </Field>
-        <Field label="Fitness" width={60} help="Number of non-attacking queen pairs (max 28 = solved)">
-          {individual ? <span style={styles.fitness}>{individual.fitness}/28</span> : na}
-        </Field>
-        <Field label="Born" width={50} help="The generation in which this individual was first created">
-          {individual
-            ? <span style={styles.val}>Gen {individual.bornGeneration ?? 0}</span>
-            : na}
-        </Field>
-        <Field label="Lives in" width={60} help="The generation snapshot currently being viewed">
-          {individual ? <span style={styles.val}>Gen {generation}</span> : na}
-        </Field>
-        <Field label="Role" width={100} help="This individual's role in the current generation: Child (offspring of breeding), Parent (selected to breed), or Eligible parent (qualified but not selected)">
-          {info ? (
-            <span style={styles.val}>
-              {info.isChild
-                ? 'Child'
-                : info.isActualParent
-                  ? 'Parent'
-                  : info.isEligibleParent
-                    ? 'Eligible parent'
-                    : '-'}
-            </span>
-          ) : na}
-        </Field>
-      </div>
-
-      {/* Row 2: Mutation */}
-      <div style={styles.row}>
-        <Field label="Mutated" width={120} help="Whether a random gene was changed after crossover, and which gene was affected">
-          {info?.mutationRecord ? (
-            <span style={styles.mutation}>
-              gene {info.mutationRecord.geneIndex}: {info.mutationRecord.oldValue} -&gt; {info.mutationRecord.newValue}
-            </span>
-          ) : (
-            <span style={styles.val}>{individual ? 'No' : '-'}</span>
-          )}
-        </Field>
-      </div>
-
-      {/* Row 3: Parentage */}
-      <div style={styles.row}>
-        <Field label="Parent A" width={160} help="First parent used in the crossover that produced this child - click to inspect">
-          {info?.parentA ? (
-            <ClickableIndividual ind={info.parentA} color="#6bc5f7" onClick={() => onSelectIndividual(info.parentA!, 'Parent A')} />
-          ) : na}
-        </Field>
-        <Field label="Parent B" width={160} help="Second parent used in the crossover that produced this child - click to inspect">
-          {info?.parentB ? (
-            <ClickableIndividual ind={info.parentB} color="#c49df7" onClick={() => onSelectIndividual(info.parentB!, 'Parent B')} />
-          ) : na}
-        </Field>
-        <Field label="Crossover Position" width={50} help="The gene position where the parents' chromosomes were spliced to produce children">
-          {info?.crossoverPoint !== null && info?.crossoverPoint !== undefined
-            ? <span style={styles.val}>{info.crossoverPoint}</span>
-            : na}
-        </Field>
-      </div>
-
-      {/* Row 4: Sibling */}
-      <div style={styles.row}>
-        <Field label="Sibling" width={160} help="The other child produced from the same crossover - click to inspect">
-          {info?.sibling ? (
-            <ClickableIndividual ind={info.sibling} color="#8a8" onClick={() => onSelectIndividual(info.sibling!, 'Sibling')} />
-          ) : na}
-        </Field>
-      </div>
-
-      {/* Row 5: Breeding */}
-      <div style={styles.row}>
-        <Field label="Matings" width={80} help="How many times this individual was selected as a parent this generation, and with how many unique partners">
-          {info?.matings.length
-            ? <span style={styles.val}>{info.matings.length}x ({info.uniquePartnerCount} partner{info.uniquePartnerCount !== 1 ? 's' : ''})</span>
-            : na}
-        </Field>
-        <Field label="Mating" width={120} help="Browse through each mating event for this parent">
-          {info && info.matings.length > 0 ? (
-            <select
-              style={styles.select}
-              value={matingIndex}
-              onChange={(e) => setMatingIndex(Number(e.target.value))}
-            >
-              {info.matings.map((m, i) => (
-                <option key={i} value={i}>
-                  #{i + 1} w/ #{m.partner.id} (f:{m.partner.fitness})
-                </option>
-              ))}
-            </select>
-          ) : na}
-        </Field>
-        <Field label="Children" width={200} help="The two offspring produced by the selected mating event - select to inspect">
-          {selectedMating ? (
-            <select
-              style={styles.select}
-              value=""
-              onChange={(e) => {
-                const child = e.target.value === 'a' ? selectedMating.childA : selectedMating.childB;
-                onSelectIndividual(child, 'Child');
-                e.target.value = '';
-              }}
-            >
-              <option value="" disabled>#{selectedMating.childA.id} (f:{selectedMating.childA.fitness}), #{selectedMating.childB.id} (f:{selectedMating.childB.fitness})</option>
-              <option value="a">#{selectedMating.childA.id} (f:{selectedMating.childA.fitness})</option>
-              <option value="b">#{selectedMating.childB.id} (f:{selectedMating.childB.fitness})</option>
-            </select>
-          ) : na}
-        </Field>
-      </div>
+      <h3 style={styles.title}>Specimen</h3>
+      <Field label="ID" help="Unique ID of this individual within the population">
+        {individual ? <span style={styles.id}>#{individual.id}</span> : na}
+      </Field>
+      <Field label="Chromosome" help="Row positions for each column — the gene sequence representing queen placements">
+        {individual ? <span style={styles.val}>[{individual.solution.join(', ')}]</span> : na}
+      </Field>
+      <Field label="Fitness" help="Number of non-attacking queen pairs (max 28 = solved)">
+        {individual ? <span style={styles.fitness}>{individual.fitness}/28</span> : na}
+      </Field>
+      <Field label="Born" help="The generation in which this individual was first created">
+        {individual
+          ? <span style={styles.val}>Gen {individual.bornGeneration ?? 0}</span>
+          : na}
+      </Field>
+      <Field label="Lives in" help="The generation snapshot currently being viewed">
+        {individual ? <span style={styles.val}>Gen {generation}</span> : na}
+      </Field>
+      <Field label="Role" help="This individual's role in the current generation: Child (offspring of breeding), Parent (selected to breed), or Eligible parent (qualified but not selected)">
+        {info ? (
+          <span style={styles.val}>
+            {info.isChild
+              ? 'Child'
+              : info.isActualParent
+                ? 'Parent'
+                : info.isEligibleParent
+                  ? 'Eligible parent'
+                  : '-'}
+          </span>
+        ) : na}
+      </Field>
+      <Field label="Best" help="Whether this individual has the highest fitness in the current generation">
+        <span style={styles.checkbox}>{isBest ? '☑' : '☐'}</span>
+      </Field>
+      <Field label="Solution" help="Whether this individual has achieved the maximum fitness of 28 (all queens non-attacking)">
+        <span style={{ ...styles.checkbox, ...(isSolution ? { color: '#4caf50' } : {}) }}>{isSolution ? '☑' : '☐'}</span>
+      </Field>
+      <Field label="Mutated" help="Whether a random gene was changed after crossover, and which gene was affected">
+        {info?.mutationRecord ? (
+          <span style={styles.mutation}>
+            gene {info.mutationRecord.geneIndex}: {info.mutationRecord.oldValue} -&gt; {info.mutationRecord.newValue}
+          </span>
+        ) : (
+          <span style={styles.val}>{individual ? 'No' : '-'}</span>
+        )}
+      </Field>
+      <Field label="Parent A" help="First parent used in the crossover that produced this child - click to inspect">
+        {info?.parentA ? (
+          <ClickableIndividual ind={info.parentA} color="#6bc5f7" onClick={() => onSelectIndividual(info.parentA!, 'Parent A')} />
+        ) : na}
+      </Field>
+      <Field label="Parent B" help="Second parent used in the crossover that produced this child - click to inspect">
+        {info?.parentB ? (
+          <ClickableIndividual ind={info.parentB} color="#c49df7" onClick={() => onSelectIndividual(info.parentB!, 'Parent B')} />
+        ) : na}
+      </Field>
+      <Field label="Crossover" help="The gene position where the parents' chromosomes were spliced to produce children">
+        {info?.crossoverPoint !== null && info?.crossoverPoint !== undefined
+          ? <span style={styles.val}>{info.crossoverPoint}</span>
+          : na}
+      </Field>
+      <Field label="Sibling" help="The other child produced from the same crossover - click to inspect">
+        {info?.sibling ? (
+          <ClickableIndividual ind={info.sibling} color="#8a8" onClick={() => onSelectIndividual(info.sibling!, 'Sibling')} />
+        ) : na}
+      </Field>
+      <Field label="Matings" help="How many times this individual was selected as a parent this generation, and with how many unique partners">
+        {info?.matings.length
+          ? <span style={styles.val}>{info.matings.length}x ({info.uniquePartnerCount} partner{info.uniquePartnerCount !== 1 ? 's' : ''})</span>
+          : na}
+      </Field>
+      <Field label="Mating" help="Browse through each mating event for this parent">
+        {info && info.matings.length > 0 ? (
+          <select
+            style={styles.select}
+            value={matingIndex}
+            onChange={(e) => setMatingIndex(Number(e.target.value))}
+          >
+            {info.matings.map((m, i) => (
+              <option key={i} value={i}>
+                #{i + 1} w/ #{m.partner.id} (f:{m.partner.fitness})
+              </option>
+            ))}
+          </select>
+        ) : na}
+      </Field>
+      <Field label="Children" help="The two offspring produced by the selected mating event - select to inspect">
+        {selectedMating ? (
+          <select
+            style={styles.select}
+            value=""
+            onChange={(e) => {
+              const child = e.target.value === 'a' ? selectedMating.childA : selectedMating.childB;
+              onSelectIndividual(child, 'Child');
+              e.target.value = '';
+            }}
+          >
+            <option value="" disabled>#{selectedMating.childA.id} (f:{selectedMating.childA.fitness}), #{selectedMating.childB.id} (f:{selectedMating.childB.fitness})</option>
+            <option value="a">#{selectedMating.childA.id} (f:{selectedMating.childA.fitness})</option>
+            <option value="b">#{selectedMating.childB.id} (f:{selectedMating.childB.fitness})</option>
+          </select>
+        ) : na}
+      </Field>
     </div>
   );
 };
 
 const Field: React.FC<{
   label: string;
-  width: number;
   help?: string;
   children: React.ReactNode;
-}> = ({ label, width, help, children }) => (
-  <div style={{ ...styles.field, minWidth: width }} data-help={help}>
+}> = ({ label, help, children }) => (
+  <div style={styles.field} data-help={help}>
     <span style={styles.fieldLabel}>{label}</span>
     <span style={styles.fieldValue}>{children}</span>
   </div>
@@ -241,38 +235,40 @@ const ClickableIndividual: React.FC<{
 const styles: Record<string, React.CSSProperties> = {
   panel: {
     backgroundColor: '#1a1a2e',
-    borderRadius: 0,
-    padding: '6px 10px',
-    borderTop: '1px solid #2a2a4a',
+    borderRadius: 8,
+    padding: 16,
+    border: '1px solid #2a2a4a',
     fontFamily: 'monospace',
     fontSize: 11,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
+    marginTop: 12,
   },
-  row: {
-    display: 'flex',
-    gap: 12,
-    alignItems: 'center',
-    minHeight: 20,
+  title: {
+    margin: '0 0 12px 0',
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: '#aaa',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1,
   },
   field: {
     display: 'flex',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 4,
-    whiteSpace: 'nowrap',
+    padding: '2px 0',
+    minHeight: 22,
   },
   fieldLabel: {
-    fontSize: 9,
-    color: '#666',
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.3,
+    fontSize: 11,
+    color: '#888',
     flexShrink: 0,
   },
   fieldValue: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#e0e0e0',
   },
   na: {
     color: '#444',
@@ -290,6 +286,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mutation: {
     color: '#ff6b6b',
+  },
+  checkbox: {
+    fontSize: 13,
+    color: '#888',
+    userSelect: 'none' as const,
   },
   clickable: {
     display: 'inline-flex',

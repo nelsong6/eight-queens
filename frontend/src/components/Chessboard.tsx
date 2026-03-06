@@ -4,7 +4,6 @@ import { BOARD_SIZE, MAX_FITNESS } from '../engine/types';
 
 interface Props {
   individual: Individual | null;
-  label?: string;
   showAttacks?: boolean;
   /** Algorithm interval in ms — drives animation tier logic. Undefined = manual step. */
   speed?: number;
@@ -60,7 +59,7 @@ const BOARD_PX = CELL_SIZE * BOARD_SIZE;
 const PAD = CELL_SIZE * 0.08;
 const SPRITE_SIZE = CELL_SIZE - PAD * 2;
 
-export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = true, speed, zoomed = false }) => {
+export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, speed, zoomed = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [spriteLoaded, setSpriteLoaded] = useState(!!queenImage);
@@ -76,8 +75,7 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
       const entry = entries[0];
       if (!entry) return;
       const { width, height } = entry.contentRect;
-      // Reserve space for label (~20px) + info (~20px)
-      const availH = height - 50;
+      const availH = height;
       const s = Math.min(width / BOARD_PX, availH / BOARD_PX);
       setBoardScale(s);
     });
@@ -181,7 +179,6 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
 
   return (
     <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%', justifyContent: 'center' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs">
-      {label && <div style={styles.label} data-help="What the board is currently displaying — random placement, best individual, or solution">{label}</div>}
       <div style={{
         ...styles.boardContainer,
         transform: `scale(${boardScale})`,
@@ -218,11 +215,6 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
           />
         ))}
       </div>
-      {displayedIndividual && (
-        <div style={styles.info} data-help="Chromosome (row positions for each column) and fitness score — 28/28 means no queens attack each other">
-          [{displayedIndividual.solution.join(', ')}] &mdash; Fitness: {displayedIndividual.fitness}/{MAX_FITNESS}
-        </div>
-      )}
     </div>
   );
 };
@@ -234,13 +226,6 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 6,
   },
-  label: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    color: '#aaa',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
   boardContainer: {
     position: 'relative',
     width: BOARD_PX,
@@ -251,10 +236,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   canvas: {
     display: 'block',
-  },
-  info: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    color: '#ccc',
   },
 };
