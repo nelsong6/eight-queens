@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import type { Individual, GenerationBreedingData } from '../engine/types';
+import type { Individual, GenerationBreedingData, PoolOrigin } from '../engine/types';
+import { formatCoordinate } from '../engine/time-coordinate';
 
 interface Props {
   individual: Individual | null;
@@ -7,7 +8,8 @@ interface Props {
   generation: number;
   isBest: boolean;
   isSolution: boolean;
-  onSelectIndividual: (individual: Individual, source: string) => void;
+  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
+  viewedOrigin: PoolOrigin | null;
 }
 
 interface MatingEntry {
@@ -24,6 +26,7 @@ export const SpecimenPanel: React.FC<Props> = ({
   isBest,
   isSolution,
   onSelectIndividual,
+  viewedOrigin,
 }) => {
   const [matingIndex, setMatingIndex] = useState(0);
 
@@ -103,19 +106,29 @@ export const SpecimenPanel: React.FC<Props> = ({
       <Field label="ID" help="Unique ID of this individual within the population">
         {individual ? <span style={styles.id}>#{individual.id}</span> : na}
       </Field>
+      <Field label="Sample collection date" help="The pipeline position where this individual was clicked — format: x.y.t (generation.operation.phase)">
+        {viewedOrigin ? (
+          <span style={styles.val}>
+            <span style={styles.coordinate}>{formatCoordinate(viewedOrigin.coordinate)}</span>
+          </span>
+        ) : na}
+      </Field>
       <Field label="Chromosome" help="Row positions for each column — the gene sequence representing queen placements">
         {individual ? <span style={styles.val}>[{individual.solution.join(', ')}]</span> : na}
       </Field>
       <Field label="Fitness" help="Number of non-attacking queen pairs (max 28 = solved)">
         {individual ? <span style={styles.fitness}>{individual.fitness}/28</span> : na}
       </Field>
-      <Field label="Born" help="The generation in which this individual was first created">
+      <Field label="Born" help="The time coordinate at which this individual was created — format: x.y.t (generation.operation.phase)">
         {individual
-          ? <span style={styles.val}>Gen {individual.bornGeneration ?? 0}</span>
+          ? <span style={styles.val}>
+              <span style={styles.coordinate}>{formatCoordinate({
+                generation: individual.bornGeneration ?? 0,
+                operation: 5,
+                boundary: 2,
+              })}</span>
+            </span>
           : na}
-      </Field>
-      <Field label="Lives in" help="The generation snapshot currently being viewed">
-        {individual ? <span style={styles.val}>Gen {generation}</span> : na}
       </Field>
       <Field label="Role" help="This individual's role in the current generation: Child (offspring of breeding), Parent (selected to breed), or Eligible parent (qualified but not selected)">
         {info ? (
@@ -147,12 +160,12 @@ export const SpecimenPanel: React.FC<Props> = ({
       </Field>
       <Field label="Parent A" help="First parent used in the crossover that produced this child - click to inspect">
         {info?.parentA ? (
-          <ClickableIndividual ind={info.parentA} color="#6bc5f7" onClick={() => onSelectIndividual(info.parentA!, 'Parent A')} />
+          <ClickableIndividual ind={info.parentA} color="#6bc5f7" onClick={() => onSelectIndividual(info.parentA!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'A' })} />
         ) : na}
       </Field>
       <Field label="Parent B" help="Second parent used in the crossover that produced this child - click to inspect">
         {info?.parentB ? (
-          <ClickableIndividual ind={info.parentB} color="#c49df7" onClick={() => onSelectIndividual(info.parentB!, 'Parent B')} />
+          <ClickableIndividual ind={info.parentB} color="#c49df7" onClick={() => onSelectIndividual(info.parentB!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'B' })} />
         ) : na}
       </Field>
       <Field label="Crossover" help="The gene position where the parents' chromosomes were spliced to produce children">
@@ -162,7 +175,7 @@ export const SpecimenPanel: React.FC<Props> = ({
       </Field>
       <Field label="Sibling" help="The other child produced from the same crossover - click to inspect">
         {info?.sibling ? (
-          <ClickableIndividual ind={info.sibling} color="#8a8" onClick={() => onSelectIndividual(info.sibling!, 'Sibling')} />
+          <ClickableIndividual ind={info.sibling} color="#8a8" onClick={() => onSelectIndividual(info.sibling!, { coordinate: { generation, operation: 7, boundary: 1 }, pool: 'finalChildren' })} />
         ) : na}
       </Field>
       <Field label="Matings" help="How many times this individual was selected as a parent this generation, and with how many unique partners">
@@ -192,7 +205,7 @@ export const SpecimenPanel: React.FC<Props> = ({
             value=""
             onChange={(e) => {
               const child = e.target.value === 'a' ? selectedMating.childA : selectedMating.childB;
-              onSelectIndividual(child, 'Child');
+              onSelectIndividual(child, { coordinate: { generation, operation: 7, boundary: 1 }, pool: 'finalChildren' });
               e.target.value = '';
             }}
           >
@@ -286,6 +299,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mutation: {
     color: '#ff6b6b',
+  },
+  coordinate: {
+    color: '#6c5ce7',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+  poolLabel: {
+    color: '#999',
+    fontSize: 10,
   },
   checkbox: {
     fontSize: 13,

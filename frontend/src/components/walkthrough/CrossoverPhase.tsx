@@ -1,11 +1,11 @@
 import React from 'react';
-import type { Individual, GenerationResult } from '../../engine/types';
+import type { Individual, GenerationResult, PoolOrigin } from '../../engine/types';
 
 interface Props {
   result: GenerationResult;
   pairIndex: number;
   onPairChange: (index: number) => void;
-  onSelectIndividual: (individual: Individual, source: string) => void;
+  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
 }
 
 export const CrossoverPhase: React.FC<Props> = ({
@@ -75,7 +75,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentA}
         splicePoint={crossoverPoint}
         showSplice={false}
-        onView={() => onSelectIndividual(parentA, 'Parent A (Walkthrough)')}
+        onView={() => onSelectIndividual(parentA, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'A' })}
       />
       <ChromosomeRow
         label="Parent B"
@@ -84,7 +84,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentB}
         splicePoint={crossoverPoint}
         showSplice={false}
-        onView={() => onSelectIndividual(parentB, 'Parent B (Walkthrough)')}
+        onView={() => onSelectIndividual(parentB, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'B' })}
       />
 
       {/* Splice indicator */}
@@ -120,7 +120,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentB}
         splicePoint={crossoverPoint}
         showSplice={true}
-        onView={() => onSelectIndividual(childA, 'Child A (Walkthrough)')}
+        onView={() => onSelectIndividual(childA, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'A' })}
       />
       <ChromosomeRow
         label="Child B"
@@ -129,7 +129,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentA}
         splicePoint={crossoverPoint}
         showSplice={true}
-        onView={() => onSelectIndividual(childB, 'Child B (Walkthrough)')}
+        onView={() => onSelectIndividual(childB, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'B' })}
       />
     </div>
   );

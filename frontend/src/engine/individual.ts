@@ -3,7 +3,7 @@
 // Ported from C# individual.cs
 // ============================================================================
 
-import { Individual, BOARD_SIZE, MutationRecord } from './types';
+import { Individual, BOARD_SIZE, MutationRecord, Age } from './types';
 import { assessFitness } from './fitness';
 
 /**
@@ -20,6 +20,7 @@ export function createRandomIndividual(id: number): Individual {
     solution,
     fitness: assessFitness(solution),
     bornGeneration: 0,
+    age: 1 as Age,
   };
 }
 
@@ -32,6 +33,7 @@ export function createIndividual(id: number, solution: number[], bornGeneration?
     solution: [...solution],
     fitness: assessFitness(solution),
     bornGeneration,
+    age: 0 as Age,
   };
 }
 
@@ -44,6 +46,7 @@ export function cloneIndividual(ind: Individual): Individual {
     solution: [...ind.solution],
     fitness: ind.fitness,
     bornGeneration: ind.bornGeneration,
+    age: ind.age,
   };
 }
 
@@ -92,7 +95,7 @@ export function createSeededIndividual(id: number, seed: number): Individual {
   for (let i = 0; i < BOARD_SIZE; i++) {
     solution.push(seededInt(0, 7));
   }
-  return { id, solution, fitness: assessFitness(solution), bornGeneration: 0 };
+  return { id, solution, fitness: assessFitness(solution), bornGeneration: 0, age: 1 as Age };
 }
 
 /**

@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
-import type { Individual, MutationRecord, GenerationBreedingData } from '../engine/types';
+import type { Individual, MutationRecord, GenerationBreedingData, PoolOrigin } from '../engine/types';
+import { categoryToOrigin, formatCoordinate } from '../engine/time-coordinate';
 
 interface Props {
   breedingData: GenerationBreedingData | null;
   generation: number;
-  onSelectIndividual: (individual: Individual, source: string) => void;
+  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
   selectedCategory: CategoryKey;
   onCategoryChange: (category: CategoryKey) => void;
 }
@@ -323,6 +324,7 @@ const MutationList: React.FC<{
               id: ind.id,
               solution: rec.preMutationSolution,
               fitness: rec.preMutationFitness,
+              age: ind.age,
             };
             return (
               <div
@@ -893,6 +895,20 @@ const vlStyles: Record<string, React.CSSProperties> = {
 
 export type CategoryKey = 'Eligible parents' | 'Actual parents' | 'Children' | 'Mutations';
 
+/** Map a legacy source string to a structured PoolOrigin. */
+function sourceToOrigin(source: string, activeCategory: CategoryKey, generation: number): PoolOrigin {
+  switch (source) {
+    case 'Parent A':
+      return { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'A' };
+    case 'Parent B':
+      return { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'B' };
+    case 'Partner':
+      return { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs' };
+    default:
+      return categoryToOrigin(activeCategory, generation);
+  }
+}
+
 const CATEGORY_HELP: Record<CategoryKey, string> = {
   'Eligible parents': 'All individuals from the previous generation whose fitness qualified them for the selection pool',
   'Actual parents': 'The specific individuals chosen by roulette-wheel selection to breed this generation',
@@ -943,9 +959,11 @@ export const BreedingListboxes: React.FC<Props> = ({
     (ind: Individual, source: string) => {
       setSelectedId(ind.id);
       if (source !== 'Mutations') setMutationSide(null);
-      onSelectIndividual(ind, source);
+      // Map legacy source strings to structured PoolOrigin
+      const origin = sourceToOrigin(source, selectedCategory, generation);
+      onSelectIndividual(ind, origin);
     },
-    [onSelectIndividual],
+    [onSelectIndividual, selectedCategory, generation],
   );
 
   const categoryData = breedingData
@@ -984,7 +1002,7 @@ export const BreedingListboxes: React.FC<Props> = ({
             disabled={generation === 0}
             style={{ ...styles.presetSelect, opacity: generation > 0 ? 1 : 0.4 }}
           >
-            {selectedCategory} &#x25BE;
+            {selectedCategory} ({formatCoordinate(categoryToOrigin(selectedCategory, generation).coordinate)}) &#x25BE;
           </button>
           {dropdownOpen && (
             <div style={styles.dropdownMenu}>
@@ -998,7 +1016,7 @@ export const BreedingListboxes: React.FC<Props> = ({
                   data-help={CATEGORY_HELP[cat]}
                   onClick={() => { onCategoryChange(cat); setDropdownOpen(false); }}
                 >
-                  {cat}
+                  {cat} ({formatCoordinate(categoryToOrigin(cat, generation).coordinate)})
                 </div>
               ))}
             </div>

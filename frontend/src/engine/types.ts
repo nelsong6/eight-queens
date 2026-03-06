@@ -33,6 +33,9 @@ export const BOARD_SIZE = 8;
  * Each individual is an array of 8 integers (0-7), where index = column
  * and value = row position of the queen in that column.
  */
+/** Lifecycle age: 0 = chromosome, 1 = child, 2 = adult, 3 = elder. */
+export type Age = 0 | 1 | 2 | 3;
+
 export interface Individual {
   /** Unique ID within the generation. */
   id: number;
@@ -42,6 +45,8 @@ export interface Individual {
   fitness: number;
   /** The generation number in which this individual was created. */
   bornGeneration?: number;
+  /** Lifecycle age: 0 = chromosome, 1 = child, 2 = adult, 3 = elder. */
+  age: Age;
 }
 
 /**
@@ -111,6 +116,56 @@ export interface CumulativeStatistics {
   totalChildren: number;
   totalMutations: number;
   iterationCount: number;
+}
+
+// ============================================================================
+// Time Coordinate System
+// ============================================================================
+
+/** Type of atomic operation in the generation pipeline. */
+export type OpType = 'transform' | 'add' | 'remove';
+
+/** Display category grouping for operations. */
+export type OpCategory = 'Aging' | 'Pruning' | 'Selection' | 'Crossover' | 'Mutation' | 'Birth';
+
+/** Definition of one atomic operation in the generation pipeline. */
+export interface OpDefinition {
+  /** y-axis value (0–7). */
+  index: number;
+  /** Human-readable name, e.g. "Promote children". */
+  name: string;
+  type: OpType;
+  category: OpCategory;
+}
+
+/**
+ * A precise position in the GA pipeline.
+ * Format: x.y.t where x=generation, y=operation (0–6), t=phase (0=before, 1=transform, 2=after).
+ */
+export interface TimeCoordinate {
+  generation: number;
+  operation: number;
+  boundary: 0 | 1 | 2;
+}
+
+/** Named population pool at a given pipeline position. */
+export type PoolName =
+  | 'oldParents'
+  | 'previousChildren'
+  | 'eligibleAdults'
+  | 'retiredParents'
+  | 'selectedPairs'
+  | 'unselected'
+  | 'matedParents'
+  | 'chromosomes'
+  | 'finalChildren';
+
+/** Identifies which pool an individual was observed in. */
+export interface PoolOrigin {
+  coordinate: TimeCoordinate;
+  pool: PoolName;
+  /** Optional qualifier, e.g. 'A' | 'B' for parent side. */
+  qualifier?: string;
 }
 
 /**

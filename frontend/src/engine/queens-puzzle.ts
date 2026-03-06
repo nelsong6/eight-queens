@@ -54,6 +54,9 @@ export class QueensPuzzle {
   private _crossoverPoints: number[];
   private _avgFitnessEligibleParents: number;
 
+  /** Synthetic seed parents created at gen 0 so gen 1 maturation is uniform. */
+  private _seedParents: Individual[];
+
   constructor(config: AlgorithmConfig) {
     this.config = { ...config };
     this.children = [];
@@ -80,6 +83,18 @@ export class QueensPuzzle {
       this.parents.push(createSeededIndividual(i, this._populationSeed));
     }
     this.parents.sort((a, b) => b.fitness - a.fitness);
+
+    // Create synthetic seed parents — random individuals that exist solely
+    // to be retired at gen 1 maturation, making the pipeline fully uniform.
+    // Use a separate seed offset so they don't collide with the real population.
+    this._seedParents = [];
+    for (let i = 0; i < this.config.populationSize; i++) {
+      const sp = createSeededIndividual(i + this.config.populationSize, this._populationSeed);
+      sp.bornGeneration = 0;
+      sp.age = 2; // adults (will become elders at gen 1 aging)
+      this._seedParents.push(sp);
+    }
+    this._seedParents.sort((a, b) => b.fitness - a.fitness);
 
     let totalFitness = 0;
     for (const parent of this.parents) {
@@ -202,8 +217,11 @@ export class QueensPuzzle {
 
   private prepareToStep(): void {
     if (this._generation > 0) {
-      // Subsequent generations: children become parents
+      // Subsequent generations: children become parents (age up: child→adult)
       this.parents = this.children;
+      for (const parent of this.parents) {
+        parent.age = 2; // adult
+      }
       this.parents.sort((a, b) => b.fitness - a.fitness);
 
       let totalFitness = 0;
@@ -309,9 +327,11 @@ export class QueensPuzzle {
       const childA = cloneIndividual(parentA);
       childA.id = this.children.length;
       childA.bornGeneration = this._generation + 1;
+      childA.age = 1; // child
       const childB = cloneIndividual(parentB);
       childB.id = this.children.length + 1;
       childB.bornGeneration = this._generation + 1;
+      childB.age = 1; // child
 
       // Single-point crossover at random position within range
       const [minPos, maxPos] = this.config.crossoverRange;
@@ -404,7 +424,8 @@ export class QueensPuzzle {
 
   /**
    * Returns a GenerationResult representing the initial random population (gen 0).
-   * No breeding has occurred — only eligibleParents is populated.
+   * Includes synthetic seed parents as actualParents and the initial population
+   * as allChildren, so gen 1 maturation can uniformly retire/promote them.
    */
   getInitialResult(): GenerationResult {
     const best = this.parents[0]!; // already sorted descending
@@ -425,20 +446,22 @@ export class QueensPuzzle {
         bParents: [],
         aChildren: [],
         bChildren: [],
-        actualParents: [],
+        actualParents: [...this._seedParents],
         mutations: [],
         mutationRecords: [],
-        eligibleParents: [...this.parents],
-        allChildren: [],
+        eligibleParents: [...this._seedParents],
+        allChildren: [...this.parents],
         crossoverPoints: [],
       },
       stepStatistics: {
-        eligibleParentsCount: this.parents.length,
+        eligibleParentsCount: this._seedParents.length,
         avgFitnessEligibleParents: this._avgFitnessEligibleParents,
-        actualParentsCount: 0,
-        avgFitnessActualParents: 0,
-        childrenCount: 0,
-        avgFitnessChildren: 0,
+        actualParentsCount: this._seedParents.length,
+        avgFitnessActualParents: this._seedParents.length > 0
+          ? this._seedParents.reduce((s, p) => s + p.fitness, 0) / this._seedParents.length
+          : 0,
+        childrenCount: this.parents.length,
+        avgFitnessChildren: this._avgFitnessEligibleParents,
         mutationCount: 0,
       },
     };
@@ -469,6 +492,16 @@ export class QueensPuzzle {
     }
 
     this.parents.sort((a, b) => b.fitness - a.fitness);
+
+    // Rebuild seed parents to match new size
+    this._seedParents = [];
+    for (let i = 0; i < newSize; i++) {
+      const sp = createSeededIndividual(i + newSize, this._populationSeed);
+      sp.bornGeneration = 0;
+      sp.age = 2; // adults (will become elders at gen 1 aging)
+      this._seedParents.push(sp);
+    }
+    this._seedParents.sort((a, b) => b.fitness - a.fitness);
 
     let totalFitness = 0;
     for (const parent of this.parents) {

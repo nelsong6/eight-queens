@@ -3,27 +3,26 @@ import { useBufferedAlgorithm } from './hooks/use-buffered-algorithm';
 import { Chessboard } from './components/Chessboard';
 import { ConfigPanel } from './components/ConfigPanel';
 import { Controls } from './components/Controls';
-import { BreedingListboxes, type CategoryKey } from './components/BreedingListboxes';
+import type { CategoryKey } from './components/BreedingListboxes';
 
 import { GenerationChart } from './components/GenerationChart';
 import { HelpBar } from './components/HelpBar';
 import { BreadcrumbTrail } from './components/BreadcrumbTrail';
-import { DrillDownTransition } from './components/DrillDownTransition';
-import { ZoomablePanel, type ExpandedRect } from './components/ZoomablePanel';
+import { ZoomablePanel } from './components/ZoomablePanel';
 import { SpecimenPanel } from './components/SpecimenPanel';
-import { SelectionPhase } from './components/walkthrough/SelectionPhase';
-import { CrossoverPhase } from './components/walkthrough/CrossoverPhase';
-import { MutationPhase } from './components/walkthrough/MutationPhase';
-import { ResultsPhase } from './components/walkthrough/ResultsPhase';
-import type { AlgorithmConfig, Individual, GenerationResult } from './engine/types';
+import type { AlgorithmConfig, Individual, GenerationResult, PoolOrigin } from './engine/types';
+import { poolDisplayName, OPS_PER_GENERATION, SCREENS_PER_OP, getOp } from './engine/time-coordinate';
+import { SubPhaseScreen } from './components/walkthrough/SubPhaseScreen';
 import { createRandomIndividual } from './engine/individual';
 import { PRESETS } from './data/presets';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
 interface WalkthroughState {
-  phase: number;
+  operation: number;       // y-axis: 0–6
+  boundary: 0 | 1 | 2;    // t-axis: before/transform/after
   result: GenerationResult;
+  previousResult: GenerationResult | null;
   browsePairIndex: number;
 }
 
@@ -39,12 +38,33 @@ const App: React.FC = () => {
   // Step granularity (applies to manual step only; auto-play always uses full step)
   const [granularity, setGranularity] = useState<'full' | 'micro'>('full');
 
+  const handleStart = useCallback(
+    (config: AlgorithmConfig) => {
+      algorithm.start(config);
+      setSessionPhase('running');
+      setWalkthroughState(null);
+    },
+    [algorithm],
+  );
+
   const handleGranularityChange = useCallback((g: 'full' | 'micro') => {
     setGranularity(g);
     if (g === 'full') {
       setWalkthroughState(null);
+    } else if (g === 'micro') {
+      // Gen 0 starts at 0.7.1 (seed connecting point), others at x.0.0.
+      // Don't restart the algorithm — gen-0 data is already eagerly computed in config phase.
+      if (sessionPhase === 'config') {
+        setSessionPhase('running');
+      }
+      const result = algorithm.lastResult;
+      if (result) {
+        // Gen 0 is the synthetic seed — start at 0.7.1 (the seed's connecting point)
+        const isGen0 = result.generationNumber === 0;
+        setWalkthroughState({ operation: isGen0 ? OPS_PER_GENERATION - 1 : 0, boundary: isGen0 ? 2 : 0, result, previousResult: null, browsePairIndex: 0 });
+      }
     }
-  }, []);
+  }, [sessionPhase, algorithm]);
 
   // Pending config from ConfigPanel (used for auto-start on first action)
   const [pendingConfig, setPendingConfig] = useState<AlgorithmConfig>({
@@ -63,6 +83,25 @@ const App: React.FC = () => {
   const [zoomedPanel, setZoomedPanel] = useState<string | null>(null);
   const [breedingCategory, setBreedingCategory] = useState<CategoryKey>('Eligible parents');
   const mainRef = useRef<HTMLDivElement>(null);
+  const boardColRef = useRef<HTMLDivElement>(null);
+  const stickyRef = useRef<HTMLDivElement>(null);
+  const [boardColCenter, setBoardColCenter] = useState<number | null>(null);
+
+  useEffect(() => {
+    const col = boardColRef.current;
+    const bar = stickyRef.current;
+    if (!col || !bar) return;
+    const measure = () => {
+      const colRect = col.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      setBoardColCenter(colRect.left + colRect.width / 2 - barRect.left);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(col);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -126,27 +165,18 @@ const App: React.FC = () => {
 
   // Viewed individual state (for click-to-view from breeding listboxes)
   const [viewedIndividual, setViewedIndividual] = useState<Individual | null>(null);
-  const [viewedSource, setViewedSource] = useState<string>('');
+  const [viewedOrigin, setViewedOrigin] = useState<PoolOrigin | null>(null);
 
-  const handleSelectIndividual = useCallback((individual: Individual, source: string) => {
+  const handleSelectIndividual = useCallback((individual: Individual, origin: PoolOrigin) => {
     setViewedIndividual(individual);
-    setViewedSource(source);
+    setViewedOrigin(origin);
   }, []);
 
   // Clear viewed individual when generation advances
   useEffect(() => {
     setViewedIndividual(null);
-    setViewedSource('');
+    setViewedOrigin(null);
   }, [algorithm.generation]);
-
-  const handleStart = useCallback(
-    (config: AlgorithmConfig) => {
-      algorithm.start(config);
-      setSessionPhase('running');
-      setWalkthroughState(null);
-    },
-    [algorithm],
-  );
 
   /** Auto-start the algorithm if still in config phase. */
   const ensureStarted = useCallback(() => {
@@ -160,7 +190,7 @@ const App: React.FC = () => {
     algorithm.start(pendingConfigRef.current);
     activeConfigRef.current = { ...pendingConfigRef.current };
     setViewedIndividual(null);
-    setViewedSource('');
+    setViewedOrigin(null);
     setSessionPhase('config');
     setWalkthroughState(null);
     setGranularity('full');
@@ -174,28 +204,28 @@ const App: React.FC = () => {
     handleReset();
   }, [handleReset]);
 
-  // Walkthrough phases (0-indexed internally, shown as 1-4 in UI):
-  //   0 = Selection  (Step 1/4) – picks parents via roulette wheel
-  //   1 = Crossover   (Step 2/4) – single-point crossover produces children
-  //   2 = Mutation    (Step 3/4) – random gene mutations on children
-  //   3 = Results     (Step 4/4) – generation summary, best fitness
-  // After phase 3, a new generation runs and we loop back to phase 0.
+  // Walkthrough: 7 operations × 3 phases (before/transform/after) = 21 screens per generation.
+  // Navigation: advance boundary 0→1→2, then operation+1 boundary 0.
+  // After op 6 boundary 2, run next generation and start at op 0 boundary 0.
   const handleWalkThrough = useCallback(() => {
     ensureStarted();
     if (!walkthroughState) {
-      // First entry: run a generation and start at phase 0 (Selection)
-      const result = algorithm.step();
+      // Show current state — gen 0 starts at 0.7.1 (seed connecting point), others at x.0.0
+      const result = algorithm.lastResult;
       if (result) {
-        setWalkthroughState({ phase: 0, result, browsePairIndex: 0 });
+        const isGen0 = result.generationNumber === 0;
+        setWalkthroughState({ operation: isGen0 ? OPS_PER_GENERATION - 1 : 0, boundary: isGen0 ? 2 : 0, result, previousResult: null, browsePairIndex: 0 });
       }
-    } else if (walkthroughState.phase < 3) {
-      // Advance to next phase within the current generation
-      setWalkthroughState({ ...walkthroughState, phase: walkthroughState.phase + 1 });
+    } else if (walkthroughState.boundary < 2) {
+      setWalkthroughState({ ...walkthroughState, boundary: (walkthroughState.boundary + 1) as 0 | 1 | 2 });
+    } else if (walkthroughState.operation < OPS_PER_GENERATION - 1) {
+      setWalkthroughState({ ...walkthroughState, operation: walkthroughState.operation + 1, boundary: 0 });
     } else {
-      // Phase 3 done → run next generation and loop back to phase 0
+      // Op 7 boundary 2 done → run next generation, start at op 0 boundary 0
+      const prevResult = walkthroughState.result;
       const result = algorithm.step();
       if (result) {
-        setWalkthroughState({ phase: 0, result, browsePairIndex: 0 });
+        setWalkthroughState({ operation: 0, boundary: 0, result, previousResult: prevResult, browsePairIndex: 0 });
       }
     }
   }, [walkthroughState, algorithm, ensureStarted]);
@@ -206,6 +236,19 @@ const App: React.FC = () => {
     }
   }, [walkthroughState]);
 
+  const handleWalkthroughNavigate = useCallback((operation: number, boundary: 0 | 1 | 2) => {
+    // Clicking a specific sub-step should switch to micro mode
+    if (granularity !== 'micro') {
+      setGranularity('micro');
+    }
+    if (walkthroughState) {
+      setWalkthroughState({ ...walkthroughState, operation, boundary, browsePairIndex: 0 });
+    } else if (algorithm.lastResult) {
+      // Full mode: create walkthrough state from current result
+      setWalkthroughState({ operation, boundary, result: algorithm.lastResult, previousResult: null, browsePairIndex: 0 });
+    }
+  }, [walkthroughState, algorithm, granularity]);
+
   const handlePlay = useCallback((stepCount: number) => {
     ensureStarted();
     setGranularity('full');
@@ -215,11 +258,13 @@ const App: React.FC = () => {
 
   const handleStep = useCallback(() => {
     ensureStarted();
+    setWalkthroughState(null);
     algorithm.step();
   }, [ensureStarted, algorithm]);
 
   const handleStepN = useCallback((count: number) => {
     ensureStarted();
+    setWalkthroughState(null);
     algorithm.stepN(count);
   }, [ensureStarted, algorithm]);
 
@@ -228,23 +273,45 @@ const App: React.FC = () => {
   }, [algorithm]);
 
   const handleBack = useCallback(() => {
-    if (granularity === 'micro' && walkthroughState) {
-      if (walkthroughState.phase > 0) {
-        // Go back one micro phase within the same generation
-        setWalkthroughState({ ...walkthroughState, phase: walkthroughState.phase - 1 });
+    if (walkthroughState) {
+      if (granularity === 'micro') {
+        // Gen 0 seed connecting point (0.7.1) — going back returns to config
+        if (walkthroughState.result.generationNumber === 0 && walkthroughState.operation === OPS_PER_GENERATION - 1 && walkthroughState.boundary === 2) {
+          setWalkthroughState(null);
+          handleReset();
+          return;
+        }
+        if (walkthroughState.boundary > 0) {
+          // Go back within same operation (after→transform, transform→before)
+          setWalkthroughState({ ...walkthroughState, boundary: (walkthroughState.boundary - 1) as 0 | 1 | 2 });
+          return;
+        }
+        if (walkthroughState.operation > 0) {
+          // Go back to previous operation's "after" (boundary 2)
+          setWalkthroughState({ ...walkthroughState, operation: walkthroughState.operation - 1, boundary: 2 });
+          return;
+        }
+        // At op 0 boundary 0: go back a full generation
+        const restoredResult = algorithm.goBack();
+        if (restoredResult) {
+          setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: restoredResult, previousResult: null, browsePairIndex: 0 });
+        } else {
+          // At generation 0 with no undo history: return to config phase
+          setWalkthroughState(null);
+          handleReset();
+        }
         return;
       }
-      // At phase 0: go back a full generation, land on phase 3
-      const restoredResult = algorithm.goBack();
-      if (restoredResult) {
-        setWalkthroughState({ phase: 3, result: restoredResult, browsePairIndex: 0 });
-      } else {
-        setWalkthroughState(null);
-      }
+      // Full mode with walkthrough (user clicked pipeline bar) — clear back to default view
+      setWalkthroughState(null);
       return;
     }
-    algorithm.goBack();
-  }, [granularity, walkthroughState, algorithm]);
+    const restored = algorithm.goBack();
+    if (!restored) {
+      // At generation 0 with no undo history: return to config phase
+      handleReset();
+    }
+  }, [granularity, walkthroughState, algorithm, handleReset]);
 
   const handleClearWalkthrough = useCallback(() => {
     setWalkthroughState(null);
@@ -253,26 +320,6 @@ const App: React.FC = () => {
   const handleClearZoom = useCallback(() => {
     setZoomedPanel(null);
   }, []);
-
-  // Companion layout: when breeding is zoomed, overlay the board as a small inset
-  const companionLayout = useMemo(() => {
-    if (zoomedPanel !== 'breeding' || !mainRef.current) return null;
-    const c = mainRef.current.getBoundingClientRect();
-    const cs = window.getComputedStyle(mainRef.current);
-    const pt = parseFloat(cs.paddingTop);
-    const pl = parseFloat(cs.paddingLeft);
-    const availH = window.innerHeight - c.top - pt;
-    const size = Math.min(availH * 0.45, 220);
-
-    return {
-      boardRect: {
-        top: window.innerHeight - size - 12,
-        left: c.left + pl + 12,
-        width: size,
-        height: size,
-      } as ExpandedRect,
-    };
-  }, [zoomedPanel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Transition to review phase when solved
   useEffect(() => {
@@ -288,11 +335,13 @@ const App: React.FC = () => {
   const displayIndividual = viewedIndividual ?? algorithm.solutionIndividual ?? algorithm.bestIndividual ?? initialIndividual;
   const displayIsBest = displayIndividual != null && algorithm.bestIndividual != null && displayIndividual.id === algorithm.bestIndividual.id;
   const displayIsSolution = displayIndividual != null && displayIndividual.fitness === 28;
+  const displayOrigin: PoolOrigin | null = viewedOrigin
+    ?? (hasStarted ? { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 }, pool: 'finalChildren' as const } : null);
 
   // Status message matching C# behavior
   const statusMessage = useMemo<{ label: string; value: string }>(() => {
     if (viewedIndividual) {
-      return { label: viewedSource ?? 'Individual', value: `f:${viewedIndividual.fitness}/28` };
+      return { label: viewedOrigin ? poolDisplayName(viewedOrigin) : 'Individual', value: `f:${viewedIndividual.fitness}/28` };
     }
     if (algorithm.solved && algorithm.solutionIndividual) {
       const sol = algorithm.solutionIndividual.solution.join(' ');
@@ -304,12 +353,12 @@ const App: React.FC = () => {
       return { label: 'Best specimen', value: `[${sol}]` };
     }
     return { label: 'Best specimen', value: '' };
-  }, [viewedIndividual, viewedSource, algorithm.solved, algorithm.solutionIndividual, algorithm.lastResult, algorithm.generation]);
+  }, [viewedIndividual, viewedOrigin, algorithm.solved, algorithm.solutionIndividual, algorithm.lastResult, algorithm.generation]);
 
   return (
     <div style={styles.app}>
       {/* Sticky top bar: header + help tooltip */}
-      <div style={styles.stickyTop}>
+      <div ref={stickyRef} style={styles.stickyTop}>
         <header style={styles.header}>
           <div style={styles.headerLeft}>
             <div style={styles.titleRow}>
@@ -324,7 +373,7 @@ const App: React.FC = () => {
         <BreadcrumbTrail
           sessionPhase={sessionPhase}
           granularity={granularity}
-          walkthroughPhase={walkthroughState?.phase ?? null}
+          walkthroughPhase={walkthroughState ? walkthroughState.operation * SCREENS_PER_OP + walkthroughState.boundary : null}
           browsePairIndex={walkthroughState?.browsePairIndex ?? null}
           zoomedPanel={zoomedPanel}
           breedingCategory={breedingCategory}
@@ -332,28 +381,60 @@ const App: React.FC = () => {
           onClearWalkthrough={handleClearWalkthrough}
           onClearZoom={handleClearZoom}
         />
-        <Controls
-          sessionPhase={sessionPhase}
-          isRunning={algorithm.running}
-          onPlay={handlePlay}
-          onPause={handlePause}
-          onStep={granularity === 'micro' ? handleWalkThrough : handleStep}
-          onStepN={handleStepN}
-          onBack={handleBack}
-          canGoBack={
-            granularity === 'micro' && walkthroughState
-              ? walkthroughState.phase > 0 || algorithm.canGoBack
-              : algorithm.canGoBack
-          }
-          onReset={handleReset}
-          onNewSession={handleNewSession}
-          speed={algorithm.speed}
-          onSpeedChange={algorithm.setSpeed}
-          solved={algorithm.solved}
-          walkthroughPhase={walkthroughState?.phase ?? null}
-          granularity={granularity}
-          onGranularityChange={handleGranularityChange}
-        />
+        <div style={styles.controlsWrapper}>
+          <Controls
+            sessionPhase={sessionPhase}
+            isRunning={algorithm.running}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onStep={granularity === 'micro' ? handleWalkThrough : handleStep}
+            onStepN={handleStepN}
+            onBack={handleBack}
+            canGoBack={
+              walkthroughState
+                ? granularity === 'micro'
+                  ? !(walkthroughState.result.generationNumber === 0 && walkthroughState.operation === OPS_PER_GENERATION - 1 && walkthroughState.boundary === 2)
+                  : true
+                : algorithm.canGoBack
+            }
+            onReset={handleReset}
+            onNewSession={handleNewSession}
+            speed={algorithm.speed}
+            onSpeedChange={algorithm.setSpeed}
+            solved={algorithm.solved}
+            walkthroughPhase={walkthroughState ? walkthroughState.operation * SCREENS_PER_OP + walkthroughState.boundary : null}
+            granularity={granularity}
+            onGranularityChange={handleGranularityChange}
+          />
+          {boardColCenter != null && (() => {
+            const coord = walkthroughState
+              ? { generation: walkthroughState.result.generationNumber, operation: walkthroughState.operation, boundary: walkthroughState.boundary }
+              : hasStarted
+                ? { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 as const }
+                : { generation: 0, operation: OPS_PER_GENERATION - 1, boundary: 2 as const };
+            const op = getOp(coord.operation);
+            const boundaryLabel = coord.boundary === 0 ? 'BEFORE' : coord.boundary === 1 ? 'TRANSFORM' : 'AFTER';
+            const boundaryValue = coord.boundary === 0 ? '0' : coord.boundary === 1 ? 't' : '1';
+            return (
+              <div style={{ ...styles.coordOverlay, left: boardColCenter }}>
+                <div style={styles.coordSegment} data-help={`Generation ${coord.generation} — the current evolutionary cycle`}>
+                  <span style={styles.coordDigit}>{coord.generation}</span>
+                  <span style={styles.coordLabel}>Generation</span>
+                </div>
+                <span style={styles.coordDot}>.</span>
+                <div style={styles.coordSegment} data-help={`Operation ${coord.operation} — "${op.name}" (${op.category})`}>
+                  <span style={styles.coordDigit}>{coord.operation}</span>
+                  <span style={styles.coordLabel}>Operation</span>
+                </div>
+                <span style={styles.coordDot}>.</span>
+                <div style={styles.coordSegment} data-help={`${boundaryLabel} — ${coord.boundary === 0 ? 'input state before the operation runs' : coord.boundary === 1 ? 'the operation in progress' : 'output state after the operation completes'}`}>
+                  <span style={styles.coordDigit}>{boundaryValue}</span>
+                  <span style={styles.coordLabel}>Progress</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Backdrop overlay when a panel is zoomed */}
@@ -367,14 +448,53 @@ const App: React.FC = () => {
       {/* Main content */}
       <div ref={mainRef} style={styles.main}>
         <div style={styles.columns}>
-          {/* Column 1: Board + Specimen Inspector */}
+          {/* Column 1: Breeding / Walkthrough */}
           <div style={styles.column}>
-            <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} companionRect={companionLayout?.boardRect}>
+            <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} zoomedMaxWidth={900}>
+              {walkthroughState ? (
+                <SubPhaseScreen
+                  coordinate={{
+                    generation: walkthroughState.result.generationNumber,
+                    operation: walkthroughState.operation,
+                    boundary: walkthroughState.boundary,
+                  }}
+                  result={walkthroughState.result}
+                  previousResult={walkthroughState.previousResult}
+                  onSelectIndividual={handleSelectIndividual}
+                  browsePairIndex={walkthroughState.browsePairIndex}
+                  onPairChange={handleWalkthroughPairChange}
+                  onNavigate={handleWalkthroughNavigate}
+                />
+              ) : algorithm.lastResult ? (
+                <SubPhaseScreen
+                  coordinate={{
+                    generation: algorithm.lastResult.generationNumber,
+                    operation: OPS_PER_GENERATION - 1,
+                    boundary: 2,
+                  }}
+                  result={algorithm.lastResult}
+                  previousResult={null}
+                  onSelectIndividual={handleSelectIndividual}
+                  browsePairIndex={0}
+                  onPairChange={() => {}}
+                  onNavigate={handleWalkthroughNavigate}
+                />
+              ) : (
+                <div style={{ padding: 16, color: '#666', fontFamily: 'monospace', fontSize: 11 }}>
+                  Loading population…
+                </div>
+              )}
+            </ZoomablePanel>
+          </div>
+
+          {/* Column 2: Board + Specimen Inspector */}
+          <div ref={boardColRef} style={styles.column}>
+            <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
               <Chessboard
                 individual={displayIndividual}
                 showAttacks={hasStarted}
                 speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
-                zoomed={zoomedPanel === 'board' || zoomedPanel === 'breeding'}
+                zoomed={zoomedPanel === 'board'}
               />
               <SpecimenPanel
                 individual={displayIndividual}
@@ -383,11 +503,12 @@ const App: React.FC = () => {
                 isBest={displayIsBest}
                 isSolution={displayIsSolution}
                 onSelectIndividual={handleSelectIndividual}
+                viewedOrigin={displayOrigin}
               />
             </ZoomablePanel>
           </div>
 
-          {/* Column 2: Config */}
+          {/* Column 3: Config */}
           <div style={{ ...styles.column, flex: '0.7 1 0' }}>
             <ZoomablePanel id="config" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
               <ConfigPanel
@@ -403,44 +524,6 @@ const App: React.FC = () => {
                 avgFitness={algorithm.avgFitness}
                 solved={algorithm.solved}
                 statusMessage={statusMessage}
-              />
-            </ZoomablePanel>
-          </div>
-
-          {/* Column 3: Breeding */}
-          <div style={styles.column}>
-            <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
-              <DrillDownTransition
-                isActive={granularity === 'micro' && walkthroughState !== null}
-                normalContent={
-                  <BreedingListboxes
-                    breedingData={algorithm.lastResult?.breedingData ?? null}
-                    generation={algorithm.generation}
-                    onSelectIndividual={handleSelectIndividual}
-                    selectedCategory={breedingCategory}
-                    onCategoryChange={setBreedingCategory}
-                  />
-                }
-                drillDownContent={
-                  walkthroughState ? (
-                    walkthroughState.phase === 0 ? (
-                      <SelectionPhase result={walkthroughState.result} />
-                    ) : walkthroughState.phase === 1 ? (
-                      <CrossoverPhase
-                        result={walkthroughState.result}
-                        pairIndex={walkthroughState.browsePairIndex}
-                        onPairChange={handleWalkthroughPairChange}
-                        onSelectIndividual={handleSelectIndividual}
-                      />
-                    ) : walkthroughState.phase === 2 ? (
-                      <MutationPhase result={walkthroughState.result} />
-                    ) : (
-                      <ResultsPhase result={walkthroughState.result} />
-                    )
-                  ) : (
-                    <SelectionPhase />
-                  )
-                }
               />
             </ZoomablePanel>
           </div>
@@ -512,6 +595,49 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#888',
     fontFamily: 'monospace',
   },
+  controlsWrapper: {
+    position: 'relative' as const,
+  },
+  coordOverlay: {
+    position: 'absolute' as const,
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 0,
+    pointerEvents: 'none' as const,
+  },
+  coordSegment: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: 1,
+    pointerEvents: 'auto' as const,
+  },
+  coordDigit: {
+    fontSize: 28,
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    color: '#e0e0e0',
+    fontVariantNumeric: 'tabular-nums',
+    minWidth: 28,
+    textAlign: 'center' as const,
+    lineHeight: 1,
+  },
+  coordLabel: {
+    fontSize: 8,
+    fontFamily: 'monospace',
+    color: '#555',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1,
+  },
+  coordDot: {
+    fontSize: 28,
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    color: '#3a3a5a',
+    lineHeight: 1,
+  },
   backdrop: {
     position: 'fixed' as const,
     inset: 0,
@@ -523,7 +649,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     padding: '12px 24px',
     maxWidth: 1800,
-    margin: '0 auto',
+    margin: 0,
     flex: 1,
     minHeight: 0,
     width: '100%',

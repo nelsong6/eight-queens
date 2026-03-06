@@ -16,10 +16,10 @@ interface ZoomablePanelProps {
   containerRef?: React.RefObject<HTMLDivElement | null>;
   /** Extra styles merged onto the outer wrapper in normal (non-zoomed) state */
   style?: React.CSSProperties;
-  /** When set and panel would normally be hidden, render at this fixed position as a companion */
-  companionRect?: ExpandedRect | null;
-  /** Adjusts the expanded rect after computation (e.g. to share space with a companion) */
+  /** Adjusts the expanded rect after computation */
   expandedRectModifier?: (rect: ExpandedRect) => ExpandedRect;
+  /** When zoomed, cap content width and center horizontally */
+  zoomedMaxWidth?: number;
 }
 
 export const ZoomablePanel: React.FC<ZoomablePanelProps> = ({
@@ -29,8 +29,8 @@ export const ZoomablePanel: React.FC<ZoomablePanelProps> = ({
   children,
   containerRef,
   style,
-  companionRect,
   expandedRectModifier,
+  zoomedMaxWidth,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -40,47 +40,41 @@ export const ZoomablePanel: React.FC<ZoomablePanelProps> = ({
 
   const isZoomed = zoomedId === id;
   const isHidden = zoomedId !== null && !isZoomed;
-  const isCompanion = isHidden && companionRect != null;
-  const shouldAnimate = isZoomed || isCompanion;
+  const shouldAnimate = isZoomed;
   const [collapsing, setCollapsing] = useState(false);
 
-  // --- Zoom / companion in: capture rect → go fixed → expand next frame ---
+  // --- Zoom in: capture rect → go fixed → expand next frame ---
   useEffect(() => {
     if (shouldAnimate && !rect && panelRef.current) {
       const r = panelRef.current.getBoundingClientRect();
       setRect(r);
 
-      if (isCompanion) {
-        // Companion: animate to the provided companion rect
-        setExpandedRect(companionRect!);
+      // Calculate expanded bounds from container's content area
+      let er: ExpandedRect;
+      if (containerRef?.current) {
+        const c = containerRef.current.getBoundingClientRect();
+        const cs = window.getComputedStyle(containerRef.current);
+        const pt = parseFloat(cs.paddingTop);
+        const pl = parseFloat(cs.paddingLeft);
+        const pr = parseFloat(cs.paddingRight);
+        er = {
+          top: c.top + pt,
+          left: c.left + pl,
+          width: c.width - pl - pr,
+          height: window.innerHeight - c.top - pt,
+        };
       } else {
-        // Zoomed: calculate expanded bounds from container's content area
-        let er: ExpandedRect;
-        if (containerRef?.current) {
-          const c = containerRef.current.getBoundingClientRect();
-          const cs = window.getComputedStyle(containerRef.current);
-          const pt = parseFloat(cs.paddingTop);
-          const pl = parseFloat(cs.paddingLeft);
-          const pr = parseFloat(cs.paddingRight);
-          er = {
-            top: c.top + pt,
-            left: c.left + pl,
-            width: c.width - pl - pr,
-            height: window.innerHeight - c.top - pt,
-          };
-        } else {
-          er = {
-            top: 20,
-            left: 20,
-            width: window.innerWidth - 40,
-            height: window.innerHeight - 40,
-          };
-        }
-        if (expandedRectModifier) {
-          er = expandedRectModifier(er);
-        }
-        setExpandedRect(er);
+        er = {
+          top: 20,
+          left: 20,
+          width: window.innerWidth - 40,
+          height: window.innerHeight - 40,
+        };
       }
+      if (expandedRectModifier) {
+        er = expandedRectModifier(er);
+      }
+      setExpandedRect(er);
     }
   }, [shouldAnimate]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -179,10 +173,14 @@ export const ZoomablePanel: React.FC<ZoomablePanelProps> = ({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {children}
+        {isFixed && zoomedMaxWidth ? (
+          <div style={{ width: '100%', maxWidth: zoomedMaxWidth, margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' as const, minHeight: 0 }}>
+            {children}
+          </div>
+        ) : children}
 
         {/* Expand button (top-right, visible on hover) */}
-        {!isZoomed && !isCompanion && (
+        {!isZoomed && !isHidden && (
           <button
             onClick={handleZoomIn}
             title="Expand"

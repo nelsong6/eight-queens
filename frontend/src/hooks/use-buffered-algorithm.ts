@@ -61,8 +61,14 @@ export function useBufferedAlgorithm() {
   const takeSnapshot = useCallback((): HistorySnapshot | null => {
     const result = lastResult;
     if (!result) return null;
-    const stats = cumulativeStats;
-    if (!stats) return null;
+    const stats = cumulativeStats ?? {
+      totalEligibleParents: 0,
+      avgFitnessIncrease: 0,
+      totalActualParents: 0,
+      totalChildren: 0,
+      totalMutations: 0,
+      iterationCount: 0,
+    };
     return {
       result,
       summariesLength: allSummariesRef.current.length,
@@ -193,9 +199,21 @@ export function useBufferedAlgorithm() {
   }, [solved, speed, applyResult, pushUndo, finishPendingSweep]);
 
   const pause = useCallback(() => {
-    finishPendingSweep();
     const clock = clockRef.current;
     const buffer = bufferRef.current;
+
+    // Handle any pending sweep first (from stepOnce/stepN)
+    finishPendingSweep();
+
+    // If still running with a fractional playhead, let the chart animate
+    // to the next whole generation before stopping
+    if (clock && clock.running) {
+      clock.stopAtNextBoundary();
+      if (buffer) buffer.stopProducing();
+      setRunning(false);
+      return;
+    }
+
     if (clock) clock.stop();
     if (buffer) buffer.stopProducing();
     setRunning(false);
@@ -255,21 +273,22 @@ export function useBufferedAlgorithm() {
       const fromPlayhead = chartPlayheadRef.current;
       const targetPlayhead = fromPlayhead + 1;
 
+      // Apply result immediately so board/UI update in sync
+      applyResult(result, stats);
+
       clock.maxPlayhead = targetPlayhead;
       clock.onTick = (playhead) => {
         chartPlayheadRef.current = playhead;
       };
       clock.onBoundary = null;
       clock.onSweepComplete = () => {
-        // Commit when animation reaches the integer boundary
+        // Commit chart data when animation reaches the integer boundary
         allSummariesRef.current = [...allSummariesRef.current, summary];
         setGenerationSummaries([...allSummariesRef.current]);
         chartPlayheadRef.current = targetPlayhead;
         lookaheadSummaryRef.current = null;
         clock.setPlayhead(targetPlayhead);
         clock.onSweepComplete = null;
-
-        applyResult(result, stats);
       };
       clock.startSweep(targetPlayhead, 300, 'ease-in-out');
     } else {

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { getOp, SCREENS_PER_OP, SCREENS_PER_GENERATION } from '../engine/time-coordinate';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -19,8 +20,6 @@ interface BreadcrumbTrailProps {
   onClearWalkthrough: () => void;
   onClearZoom: () => void;
 }
-
-const PHASE_NAMES = ['Selection', 'Crossover', 'Mutation', 'Results'];
 
 const PANEL_LABELS: Record<string, string> = {
   status: 'Status',
@@ -75,17 +74,22 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
         helpText: 'Micro-step mode: stepping through individual algorithm phases',
       });
 
-      // Layer 3: Walkthrough phase
+      // Layer 3: Walkthrough phase (walkthroughPhase = operation * 3 + boundary)
       if (hasWalkthrough) {
-        const phaseName = PHASE_NAMES[walkthroughPhase!] ?? 'Unknown';
+        const operation = Math.floor(walkthroughPhase! / SCREENS_PER_OP);
+        const boundary = walkthroughPhase! % SCREENS_PER_OP as 0 | 1 | 2;
+        const op = getOp(operation);
+        const phaseLabel = boundary === 0 ? 'Before' : boundary === 1 ? 'Transform' : 'After';
+        const screenIndex = walkthroughPhase! + 1;
+        const totalScreens = SCREENS_PER_GENERATION;
         result.push({
-          label: phaseName,
+          label: `${op.category} — ${op.name} (${phaseLabel})`,
           onClick: hasZoom ? () => { onClearZoom(); } : null,
-          helpText: `Walkthrough step ${walkthroughPhase! + 1}/4: ${phaseName}`,
+          helpText: `Step ${screenIndex}/${totalScreens}: ${phaseLabel} ${op.name} [${op.type}]`,
         });
 
-        // Layer 4: Pair indicator (crossover only)
-        if (walkthroughPhase === 1 && browsePairIndex !== null) {
+        // Layer 4: Pair indicator (crossover generate chromosomes, after)
+        if (operation === 4 && boundary === 2 && browsePairIndex !== null) {
           result.push({
             label: `Pair #${browsePairIndex + 1}`,
             onClick: null,

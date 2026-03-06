@@ -10,6 +10,9 @@ export class AnimationClock {
   private _generationsPerMs = 0.002; // speed=1 → 1/500
   private _running = false;
 
+  // Stop-at-boundary flag: when true, clock stops after next integer crossing
+  private _stopAtBoundary = false;
+
   // Fast-sweep state
   private sweepMode = false;
   private sweepTarget = 0;
@@ -48,9 +51,22 @@ export class AnimationClock {
     this._playhead = value;
   }
 
+  /** Request the clock to stop after the playhead crosses the next integer boundary.
+   *  If already at an integer (or not running), stops immediately. */
+  stopAtNextBoundary(): void {
+    if (!this._running) return;
+    const frac = this._playhead - Math.floor(this._playhead);
+    if (frac < 1e-9) {
+      this.stop();
+      return;
+    }
+    this._stopAtBoundary = true;
+  }
+
   /** Start the rAF loop */
   start(): void {
     if (this._running) return;
+    this._stopAtBoundary = false;
     this._running = true;
     this.lastTimestamp = 0;
     this.rafId = requestAnimationFrame(this.tick);
@@ -104,6 +120,7 @@ export class AnimationClock {
     this._playhead = -1;
     this.maxPlayhead = 0;
     this.sweepMode = false;
+    this._stopAtBoundary = false;
     this.speedMultiplier = 1;
   }
 
@@ -154,11 +171,21 @@ export class AnimationClock {
     }
 
     // Detect boundary crossings (skip during sweep — state already set)
-    if (!this.sweepMode && this.onBoundary) {
+    if (!this.sweepMode) {
       const oldFloor = Math.floor(oldPlayhead);
       const newFloor = Math.floor(newPlayhead);
-      for (let gen = oldFloor + 1; gen <= newFloor; gen++) {
-        this.onBoundary(gen);
+      if (this.onBoundary) {
+        for (let gen = oldFloor + 1; gen <= newFloor; gen++) {
+          this.onBoundary(gen);
+        }
+      }
+      // If stopping at boundary and we crossed one, snap to the integer and stop
+      if (this._stopAtBoundary && newFloor > oldFloor) {
+        this._playhead = newFloor;
+        if (this.onTick) this.onTick(this._playhead, dt);
+        this._stopAtBoundary = false;
+        this.stop();
+        return;
       }
     }
 

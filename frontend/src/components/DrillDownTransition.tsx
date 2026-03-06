@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface DrillDownTransitionProps {
   isActive: boolean;
@@ -14,6 +14,16 @@ export const DrillDownTransition: React.FC<DrillDownTransitionProps> = ({
   transitionDurationMs = 250,
 }) => {
   const transition = `opacity ${transitionDurationMs}ms ease`;
+  // Track layout separately so position swap happens after opacity transition
+  const [layoutActive, setLayoutActive] = useState(isActive);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    clearTimeout(timerRef.current);
+    // Delay layout swap in both directions so position change happens after opacity fade
+    timerRef.current = setTimeout(() => setLayoutActive(isActive), transitionDurationMs);
+    return () => clearTimeout(timerRef.current);
+  }, [isActive, transitionDurationMs]);
 
   return (
     <div style={{ position: 'relative' as const, flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' as const }}>
@@ -26,7 +36,7 @@ export const DrillDownTransition: React.FC<DrillDownTransitionProps> = ({
           display: 'flex',
           flexDirection: 'column' as const,
           minHeight: 0,
-          ...(isActive ? { position: 'absolute' as const, inset: 0 } : { flex: 1 }),
+          ...(layoutActive ? { position: 'absolute' as const, inset: 0 } : { flex: 1 }),
         }}
       >
         {normalContent}
@@ -41,7 +51,7 @@ export const DrillDownTransition: React.FC<DrillDownTransitionProps> = ({
           display: 'flex',
           flexDirection: 'column' as const,
           minHeight: 0,
-          ...(!isActive ? { position: 'absolute' as const, inset: 0 } : { flex: 1 }),
+          ...(!layoutActive ? { position: 'absolute' as const, inset: 0 } : { flex: 1 }),
         }}
       >
         {drillDownContent}

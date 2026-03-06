@@ -17,6 +17,7 @@ No backend or API.
 - Crossover: single-point at random position within configurable range [min, max]
 - Mutation: per-child probability, replaces one random gene with random value
 - Termination: first individual with fitness == 28
+- Individual age lifecycle: 0 (chromosome) → 1 (child) → 2 (adult) → 3 (elder, then removed)
 
 ## Engine Layer (frontend/src/engine/)
 
@@ -30,7 +31,9 @@ AnimationClock        - rAF-based fractional playhead; normal mode + sweep (ease
 Hook: `useBufferedAlgorithm` wires everything to React state. Manages undo/redo (MAX_UNDO=50), chart refs, speed.
 
 Key engine files:
-- `types.ts` — all interfaces: `Individual`, `AlgorithmConfig`, `GenerationResult`, `GenerationBreedingData`, `StepStatistics`, `CumulativeStatistics`, `GenerationSummary`, `MutationRecord`
+
+- `types.ts` — all interfaces: `Individual` (with `age: Age`), `Age` (0–3 lifecycle type), `AlgorithmConfig`, `GenerationResult`, `GenerationBreedingData`, `StepStatistics`, `CumulativeStatistics`, `GenerationSummary`, `MutationRecord`, plus time coordinate types: `OpType`, `OpCategory`, `OpDefinition`, `TimeCoordinate`, `PoolName`, `PoolOrigin`
+- `time-coordinate.ts` — `GENERATION_OPS` array (7 atomic operations), utility functions: `formatCoordinate`, `getOp`, `poolDisplayName`, `getPoolsAtCoordinate`, `categoryToOrigin`, `OPS_PER_GENERATION`
 - `fitness.ts` — `assessFitness(solution[])`: counts attacking pairs, returns 28 - attacks
 - `individual.ts` — `createRandomIndividual`, `createSeededIndividual` (deterministic from seed+id), `mutate`, `cloneIndividual`
 
@@ -39,23 +42,28 @@ Key engine files:
 4-column layout. Sticky top bar.
 
 **Top bar (sticky):**
+
 - Header (title + subtitle)
 - HelpBar — shows `data-help` text on hover; press `s` to pin/unpin
 - BreadcrumbTrail — shows navigation context; click segments to navigate back
 - Controls — Full/Micro granularity, play/pause/step/stepN/back/reset, speed slider
 
 **Column 1: Board + Specimen**
+
 - `Chessboard` — renders queens, shows attack lines when started
-- `SpecimenPanel` — click any individual to inspect: id, fitness, born gen, role, mutation, parentage, crossover point, sibling, matings
+- `SpecimenPanel` — click any individual to inspect: id, fitness, born gen, role, mutation, parentage, crossover point, sibling, matings; displays `PoolOrigin` coordinate showing exactly where in the pipeline the individual was observed
 
 **Column 2: Config (flex 0.7)**
+
 - `ConfigPanel` — Initial Settings (population, crossover range, mutation %), Status, Totals This Step, Cumulative Totals; preset dropdown; inputs support mousewheel
 
 **Column 3: Breeding / Walkthrough**
-- `BreedingListboxes` — virtual-scroll lists for: Eligible parents, Actual parents, Children, Mutations; all sortable; Children view shows parent genomes color-coded by source; Mutations shows before/after diff; Actual parents has master/detail partner view
-- Replaced by walkthrough phases in micro mode: SelectionPhase, CrossoverPhase (per-pair browsing), MutationPhase, ResultsPhase
+
+- `BreedingListboxes` — virtual-scroll lists for: Eligible parents, Actual parents, Children, Mutations; all sortable; Children view shows parent genomes color-coded by source; Mutations shows before/after diff; Actual parents has master/detail partner view; dropdown labels include time coordinates
+- Replaced by `SubPhaseScreen` in micro mode — unified walkthrough screen driven by `TimeCoordinate`, showing pools present at each operation boundary
 
 **Column 4: Chart**
+
 - `GenerationChart` — fitness history; fractional playhead from AnimationClock for smooth animation
 
 All panels are zoomable (`ZoomablePanel`); ESC or backdrop click closes zoom. When breeding is zoomed, board appears as a small inset companion.
@@ -70,15 +78,56 @@ config → running → review
 - **running**: step / stepN / play (auto) / back (undo). Granularity toggle: Full or Micro.
 - **review**: shown when fitness == 28 (solved). New Session button resets.
 
+## Time Coordinate System
+
+Every individual's position in the GA pipeline is tracked with a 3-element coordinate `x.y.t`:
+
+- `x` = generation number
+- `y` = atomic operation index (0–6)
+- `t` = boundary/phase: `0` (before), `t` (transform process, not a point in time), `1` (after) — internal array index is 0, 1, 2
+
+7 operations × 3 phases = 21 screens per generation in micro mode. The transform screen (t) visualizes what the operation does — showing input/output pool flow, operation type badge, individual count delta, and a detailed description of the mechanism.
+
+Gen 0 is the synthetic seed — micro mode starts at `0.6.1` (the seed's connecting point, showing the completed initial population). The first real algorithm step begins at `1.0.0`.
+
+### Atomic Operations (y-axis)
+
+| y   | Name                    | Type      | Category   |
+| --- | ----------------------- | --------- | ---------- |
+| 0   | Age individuals         | transform | Aging      |
+| 1   | Remove elders           | remove    | Pruning    |
+| 2   | Select breeding pairs   | transform | Selection  |
+| 3   | Mark pairs as mated     | transform | Crossover  |
+| 4   | Generate chromosomes    | add       | Crossover  |
+| 5   | Apply mutations         | transform | Mutation   |
+| 6   | Realize children        | transform | Birth      |
+
+Unselected adults (those not chosen for breeding) persist alongside mated parents through the pipeline and are naturally removed through the aging process in the next generation.
+
+### Key Types
+
+- `TimeCoordinate` — `{ generation, operation, boundary }` — precise pipeline position
+- `PoolOrigin` — `{ coordinate, pool, qualifier? }` — where an individual was observed
+- `PoolName` — which named pool: `oldParents`, `previousChildren`, `eligibleAdults`, `retiredParents`, `selectedPairs`, `unselected`, `matedParents`, `chromosomes`, `finalChildren`
+- `onSelectIndividual(individual, origin: PoolOrigin)` — all individual selection passes structured origin, not free-form strings
+
+### Synthetic Seed Parents (Gen 0)
+
+`QueensPuzzle` constructor creates two populations: synthetic seed parents and the initial random population (as "children"). Gen 0's `getInitialResult()` returns seed parents as `actualParents` and the initial population as `allChildren`. This means gen 1 maturation is fully uniform — seed parents get retired, initial population gets promoted — no special cases.
+
 ## Micro Mode / Walkthrough
 
-4 phases per generation (0-indexed internally, 1/4–4/4 in UI):
-- 0: Selection — roulette wheel picks
-- 1: Crossover — single-point crossover per pair; browse pairs with prev/next
-- 2: Mutation — shows what mutated
-- 3: Results — generation summary
+`WalkthroughState` tracks `{ operation, boundary, result, previousResult, browsePairIndex }`. Navigation advances boundary 0→1→2, then operation+1 boundary 0. After op 6 boundary 2, runs next generation starting at op 0 boundary 0. Back reverses; at op 0 boundary 0 goes back a full generation to op 6 boundary 2.
 
-Back in micro mode steps through phases in reverse; at phase 0 goes back a full generation.
+`SubPhaseScreen` renders three screen types per operation:
+
+- **Before (t=0)**: Shows input pools with individual lists
+- **Transform (t=1)**: Visualizes the operation — input→output pool flow diagram, operation type badge, individual count delta, and detailed mechanism description. Uses `getTransformDescription()` and `OP_POOL_TRANSITIONS` data.
+- **After (t=2)**: Shows output pools with individual lists
+
+Uses `getPoolsAtCoordinate()` to determine which pools to display, and `resolvePool()` to map pool names to actual individuals from `result` and `previousResult`.
+
+`BreadcrumbTrail` shows `Category — Operation name (Before/Transform/After)` with step counter. `Controls` shows `x/21` step indicator in micro mode.
 
 ## Presets (frontend/src/data/presets.ts)
 

@@ -95,10 +95,7 @@ export const Controls: React.FC<Props> = ({
           style={{ ...styles.btn, opacity: (isRunning || !canGoBack) ? 0.5 : 1 }}
           title="Back"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="14,4 4,12 14,20" />
-            <rect x="16" y="4" width="3" height="16" />
-          </svg>
+          <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>⏭</span>
         </button>
         {isRunning ? (
           <button onClick={onPause} className="btn" data-help="Pause auto-run" style={styles.btn}>
@@ -120,13 +117,7 @@ export const Controls: React.FC<Props> = ({
       <div style={styles.divider} />
 
       {/* Step controls — split button */}
-      <div style={styles.splitGroup} data-help={isMicro ? 'Advance to the next walkthrough phase' : 'Advance by N generations — pick a preset or type a custom number'}>
-        {isMicro ? (
-          <span style={{ ...styles.splitInput, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {walkthroughPhase !== null ? `${walkthroughPhase + 1}/4` : '0/4'}
-          </span>
-        ) : (
-          <>
+      <div style={styles.splitGroup} data-help={isMicro ? 'Advance to the next pipeline step (before/after each operation)' : 'Advance by N generations — pick a preset or type a custom number'}>
             <input
               list="step-presets"
               value={stepCount}
@@ -139,8 +130,6 @@ export const Controls: React.FC<Props> = ({
                 <option key={n} value={n} />
               ))}
             </datalist>
-          </>
-        )}
         <button
           onClick={() => {
             if (isMicro) { onStep(); return; }
@@ -153,7 +142,7 @@ export const Controls: React.FC<Props> = ({
           style={{
             ...styles.splitBtn,
             opacity: (!canAct && !isWalking) ? 0.5 : 1,
-            backgroundColor: isMicro ? '#4a3a8a' : '#2a2a4a',
+            backgroundColor: '#2a2a4a',
           }}
         >
           ⏭
@@ -191,7 +180,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    padding: '6px 24px',
+    padding: '14px 24px',
     backgroundColor: '#12122a',
     borderBottom: '1px solid #2a2a4a',
   },
