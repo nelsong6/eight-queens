@@ -321,7 +321,7 @@ const App: React.FC = () => {
               <h1 style={styles.title} data-help="Place 8 queens on a chessboard so none attack each other — solved by evolving random placements">Eight Queens: Genetic Algorithm</h1>
             </div>
             <p style={styles.subtitle} data-help="Uses selection, crossover, and mutation to breed better solutions each generation">
-              Evolving solutions to the classic 8-queens puzzle
+              Evolving a solution to the classic 8-queens puzzle
             </p>
           </div>
         </header>

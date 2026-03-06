@@ -19,11 +19,18 @@ const DEFAULT_VISIBLE_HEIGHT = 2000; // overestimate to avoid partial first rend
 const OVERSCAN = 3;
 
 // Grid cell widths in px (monospace 11px ≈ 6.6px per ch)
-const COL_ID = '33px';    // individual index
-const COL_GENE = '14px';  // single gene digit
-const COL_FIT = '28px';   // fitness "f:XX"
-const COL_EXTRA = '20px'; // born gen / partner count
+const COL_ID = '36px';    // individual index
+const COL_GENE = '22px';  // single gene digit (with cell padding)
+const COL_FIT = '34px';   // fitness "f:XX"
+const COL_EXTRA = '24px'; // born gen / partner count
 const COL_ARROW = '14px'; // arrow between sections
+
+// Base cell style — gives each span a visible right border like a spreadsheet
+// Spread into per-column styles, then set textAlign to control justify
+const CELL: React.CSSProperties = {
+  borderRight: '1px solid #232346',
+  padding: '0 3px',
+};
 
 type SortField = 'id' | 'fitness' | 'partners';
 type SortDir = 'asc' | 'desc';
@@ -111,7 +118,7 @@ const VirtualList: React.FC<{
     <div style={vlStyles.wrapper}>
       <div style={{ ...vlStyles.sortBar, gridTemplateColumns: gridCols }}>
         <span
-          style={{ ...vlStyles.sortBtn, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'right' as const, color: sortField === 'id' ? '#ffd700' : '#555' }}
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help="Individual index — each row is one individual. Click to sort"
@@ -119,13 +126,13 @@ const VirtualList: React.FC<{
           #
         </span>
         <span
-          style={{ gridColumn: '2', color: '#555' }}
+          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
           data-help="Each row is one individual — an 8-gene sequence representing queen positions on the board"
         >
           {'\uD83E\uDDEC'}
         </span>
         <span
-          style={{ ...vlStyles.sortBtn, gridColumn: '10', textAlign: 'center' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, gridColumn: '10', padding: '0 3px', textAlign: 'right' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
           onClick={() => toggleSort('fitness')}
           title="Sort by fitness"
           data-help="Fitness score (0–28) — number of non-attacking queen pairs. Click to sort"
@@ -134,7 +141,7 @@ const VirtualList: React.FC<{
         </span>
         {showBornGen && (
           <span
-            style={{ gridColumn: '11', textAlign: 'center' as const, color: '#555' }}
+            style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
             title="Generation this individual was born in"
             data-help="Birth generation — which generation created this individual (not sortable)"
           >
@@ -143,7 +150,7 @@ const VirtualList: React.FC<{
         )}
         {partnerCounts && (
           <span
-            style={{ ...vlStyles.sortBtn, gridColumn: showBornGen ? '12' : '11', textAlign: 'right' as const, color: sortField === 'partners' ? '#ffd700' : '#555' }}
+            style={{ ...vlStyles.sortBtn, gridColumn: showBornGen ? '12' : '11', padding: '0 3px', textAlign: 'right' as const, color: sortField === 'partners' ? '#ffd700' : '#555' }}
             onClick={() => toggleSort('partners')}
             title="Sort by number of partners"
             data-help="Number of times this individual was selected as a breeding partner. Click to sort"
@@ -269,7 +276,7 @@ const MutationList: React.FC<{
     <div style={vlStyles.wrapper}>
       <div style={{ ...mutStyles.sortBar, gridTemplateColumns: gridCols }}>
         <span
-          style={{ ...vlStyles.sortBtn, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'right' as const, color: sortField === 'id' ? '#ffd700' : '#555' }}
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help="Individual index — each row is one individual. Click to sort"
@@ -277,12 +284,12 @@ const MutationList: React.FC<{
           #
         </span>
         <span
-          style={{ gridColumn: '2', color: '#555' }}
+          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
           data-help="Each row is one individual — an 8-gene sequence representing queen positions on the board"
         >
           {'\uD83E\uDDEC'}
         </span>
-        <span style={{ gridColumn: '10', textAlign: 'right' as const, color: '#666' }}>
+        <span style={{ gridColumn: '10', padding: '0 3px', textAlign: 'right' as const, color: '#666' }}>
           before
         </span>
         <span />
@@ -468,7 +475,7 @@ const ChildrenList: React.FC<{
     <div style={vlStyles.wrapper}>
       <div style={{ ...mutStyles.sortBar, gridTemplateColumns: gridCols }}>
         <span
-          style={{ ...vlStyles.sortBtn, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'right' as const, color: sortField === 'id' ? '#ffd700' : '#555' }}
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help="Individual index — each row is one individual. Click to sort"
@@ -476,13 +483,13 @@ const ChildrenList: React.FC<{
           #
         </span>
         <span
-          style={{ gridColumn: '2', color: '#555' }}
+          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
           data-help="Each row is one individual — an 8-gene sequence representing queen positions on the board"
         >
           {'\uD83E\uDDEC'}
         </span>
         <span
-          style={{ ...vlStyles.sortBtn, gridColumn: '10', textAlign: 'left' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, gridColumn: '10', padding: '0 3px', textAlign: 'right' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
           onClick={() => toggleSort('fitness')}
           title="Sort by fitness"
           data-help="Fitness score (0–28) — number of non-attacking queen pairs. Click to sort"
@@ -490,7 +497,7 @@ const ChildrenList: React.FC<{
           {'\uD83C\uDFC5'}
         </span>
         <span
-          style={{ gridColumn: '11', textAlign: 'center' as const, color: '#555' }}
+          style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
           title="Generation this individual was born in"
           data-help="Birth generation — which generation created this individual"
         >
@@ -538,7 +545,7 @@ const ChildrenList: React.FC<{
                     return (
                       <span
                         key={gi}
-                        style={{ textAlign: 'center' as const, color: fromA ? '#6bc5f7' : '#c49df7' }}
+                        style={{ ...CELL, textAlign: 'center' as const, color: fromA ? '#6bc5f7' : '#c49df7' }}
                       >
                         {gene}
                       </span>
@@ -563,7 +570,7 @@ const ChildrenList: React.FC<{
                   title={`Parent A #${parentA.id}`}
                 >
                   {parentA.solution.map((gene, gi) => (
-                    <span key={gi} style={{ textAlign: 'center' as const, color: '#6bc5f7' }}>{gene}</span>
+                    <span key={gi} style={{ ...CELL, textAlign: 'center' as const, color: '#6bc5f7' }}>{gene}</span>
                   ))}
                   <span style={{ ...childStyles.parentFit }}>{String(parentA.id).padStart(parentIdWidth)}</span>
                 </span>
@@ -580,7 +587,7 @@ const ChildrenList: React.FC<{
                   title={`Parent B #${parentB.id}`}
                 >
                   {parentB.solution.map((gene, gi) => (
-                    <span key={gi} style={{ textAlign: 'center' as const, color: '#c49df7' }}>{gene}</span>
+                    <span key={gi} style={{ ...CELL, textAlign: 'center' as const, color: '#c49df7' }}>{gene}</span>
                   ))}
                   <span style={{ ...childStyles.parentFit }}>{String(parentB.id).padStart(parentIdWidth)}</span>
                 </span>
@@ -665,7 +672,7 @@ const ActualParentsList: React.FC<{
 
   return (
     <div style={actualParentStyles.container}>
-      <div style={actualParentStyles.half}>
+      <div style={actualParentStyles.primary}>
         <div style={actualParentStyles.subHeader}>
           Individual parents <span style={styles.count}>({breedingData.actualParents.length})</span>
         </div>
@@ -677,7 +684,7 @@ const ActualParentsList: React.FC<{
           showBornGen
         />
       </div>
-      <div style={actualParentStyles.half}>
+      <div style={actualParentStyles.secondary}>
         <div style={actualParentStyles.subHeader}>
           {selectedParent
             ? <>Mates of #{selectedParent.id} <span style={styles.count}>({partners.length} matings)</span></>
@@ -698,19 +705,26 @@ const ActualParentsList: React.FC<{
 
 const actualParentStyles: Record<string, React.CSSProperties> = {
   container: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 1fr)',
+    display: 'flex',
     gap: 8,
     flex: 1,
     minHeight: 0,
-    overflowX: 'auto' as const,
   },
-  half: {
+  primary: {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 4,
     minHeight: 0,
-    minWidth: 240,
+    flexShrink: 0,
+  },
+  secondary: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+    minHeight: 0,
+    flexShrink: 1,
+    flexGrow: 1,
+    minWidth: 0,
   },
   subHeader: {
     fontSize: 11,
@@ -731,7 +745,7 @@ const childStyles: Record<string, React.CSSProperties> = {
 
 const mutStyles: Record<string, React.CSSProperties> = {
   sortBar: {
-    columnGap: 4,
+    columnGap: 0,
     padding: '2px 6px',
     fontSize: 10,
     fontFamily: 'monospace',
@@ -755,22 +769,26 @@ const mutStyles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     display: 'grid',
     gap: 0,
-    columnGap: 4,
+    columnGap: 0,
   },
   dimGene: {
+    ...CELL,
     color: '#777',
     textAlign: 'center' as const,
   },
   oldGene: {
+    ...CELL,
     color: '#ff6b6b',
     textAlign: 'center' as const,
   },
   mutatedGene: {
+    ...CELL,
     color: '#ff6b6b',
     fontWeight: 'bold',
     textAlign: 'center' as const,
   },
   dimFitness: {
+    ...CELL,
     color: '#666',
     whiteSpace: 'nowrap' as const,
     textAlign: 'right' as const,
@@ -795,7 +813,7 @@ const vlStyles: Record<string, React.CSSProperties> = {
   sortBar: {
     display: 'grid',
     gridTemplateColumns: `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT}`,
-    columnGap: 4,
+    columnGap: 0,
     padding: '2px 6px',
     fontSize: 10,
     fontFamily: 'monospace',
@@ -831,13 +849,13 @@ const vlStyles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT}`,
     gap: 0,
-    columnGap: 4,
+    columnGap: 0,
   },
-  id: { color: '#888', whiteSpace: 'nowrap' as const },
-  gene: { color: '#e0e0e0', textAlign: 'center' as const },
-  fitness: { color: '#ffd700', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
-  bornGen: { color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, fontSize: 10 },
-  partnerCount: { color: '#8888cc', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, fontSize: 10 },
+  id: { ...CELL, color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
+  gene: { ...CELL, color: '#e0e0e0', textAlign: 'center' as const },
+  fitness: { ...CELL, color: '#ffd700', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
+  bornGen: { ...CELL, color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'center' as const, fontSize: 10 },
+  partnerCount: { ...CELL, color: '#8888cc', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, fontSize: 10, borderRight: 'none' },
   empty: {
     minHeight: MIN_CONTAINER_HEIGHT,
     flexGrow: 1,
@@ -1015,9 +1033,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column' as const,
     width: '100%',
-    maxWidth: 900,
-    marginLeft: 'auto',
-    marginRight: 'auto',
   },
   title: {
     margin: '0 0 12px 0',
