@@ -387,6 +387,17 @@ export function useBufferedAlgorithm() {
     return prev.result;
   }, [takeSnapshot, applyResult, updateCanGoBack, finishPendingSweep]);
 
+  const resizePopulation = useCallback((newSize: number) => {
+    const buffer = bufferRef.current;
+    if (!buffer) return;
+    buffer.resizePopulation(newSize);
+    const initialResult = buffer.getInitialResult();
+    setBestFitness(initialResult.bestFitness);
+    setAvgFitness(initialResult.avgFitness);
+    setBestIndividual(initialResult.bestIndividual);
+    setLastResult(initialResult);
+  }, []);
+
   const reset = useCallback(() => {
     if (clockRef.current) clockRef.current.reset();
     if (bufferRef.current) bufferRef.current.stopProducing();
