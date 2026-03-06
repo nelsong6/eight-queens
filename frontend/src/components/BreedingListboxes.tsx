@@ -1,10 +1,12 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import type { Individual, GenerationBreedingData } from '../engine/types';
+import React, { useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+import type { Individual, MutationRecord, GenerationBreedingData } from '../engine/types';
 
 interface Props {
   breedingData: GenerationBreedingData | null;
   generation: number;
   onSelectIndividual: (individual: Individual, source: string) => void;
+  selectedCategory: CategoryKey;
+  onCategoryChange: (category: CategoryKey) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -12,16 +14,50 @@ interface Props {
 // ---------------------------------------------------------------------------
 
 const ITEM_HEIGHT = 22;
-const VISIBLE_HEIGHT = 150;
+const MIN_CONTAINER_HEIGHT = 150;
+const DEFAULT_VISIBLE_HEIGHT = 2000; // overestimate to avoid partial first render
 const OVERSCAN = 3;
+
+type SortField = 'id' | 'fitness' | 'partners';
+type SortDir = 'asc' | 'desc';
 
 const VirtualList: React.FC<{
   items: Individual[];
   onSelect: (ind: Individual) => void;
   selectedId: number | null;
   emptyText?: string;
-}> = ({ items, onSelect, selectedId, emptyText = 'No data' }) => {
+  partnerCounts?: Map<number, number>;
+  showBornGen?: boolean;
+}> = ({ items, onSelect, selectedId, emptyText = 'No data', partnerCounts, showBornGen }) => {
   const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [resizeTick, setResizeTick] = useState(0);
+  const [sortField, setSortField] = useState<SortField | null>('id');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const toggleSort = useCallback((field: SortField) => {
+    setSortField((prev) => {
+      if (prev === field) {
+        setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+        return field;
+      }
+      setSortDir('asc');
+      return field;
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    setResizeTick((t) => t + 1); // sync measure before paint
+    const ro = new ResizeObserver(() => {
+      setResizeTick((t) => t + 1);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  void resizeTick; // trigger re-render on resize
+  const visibleHeight = containerRef.current?.clientHeight || DEFAULT_VISIBLE_HEIGHT;
 
   const { idWidth, fitWidth } = useMemo(() => {
     let maxId = 0, maxFit = 0;
@@ -32,53 +68,711 @@ const VirtualList: React.FC<{
     return { idWidth: String(maxId).length, fitWidth: String(maxFit).length };
   }, [items]);
 
+  const sortedItems = useMemo(() => {
+    if (!sortField) return items;
+    const mul = sortDir === 'asc' ? 1 : -1;
+    if (sortField === 'partners' && partnerCounts) {
+      return [...items].sort((a, b) => ((partnerCounts.get(a.id) ?? 0) - (partnerCounts.get(b.id) ?? 0)) * mul);
+    }
+    return [...items].sort((a, b) => (a[sortField as 'id' | 'fitness'] - b[sortField as 'id' | 'fitness']) * mul);
+  }, [items, sortField, sortDir, partnerCounts]);
+
   if (items.length === 0) {
     return <div style={vlStyles.empty}>{emptyText}</div>;
   }
 
-  const totalHeight = items.length * ITEM_HEIGHT;
+  const arrow = (field: SortField) =>
+    sortField === field
+      ? (sortDir === 'asc' ? '\u25B2' : '\u25BC')
+      : '';
+
+  const gridCols = partnerCounts
+    ? '5ch repeat(8, 2ch) 4ch 3ch'
+    : showBornGen
+      ? '5ch repeat(8, 2ch) 4ch 3ch'
+      : '5ch repeat(8, 2ch) 4ch';
+
+  const totalHeight = sortedItems.length * ITEM_HEIGHT;
   const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
   const endIndex = Math.min(
-    items.length,
-    Math.ceil((scrollTop + VISIBLE_HEIGHT) / ITEM_HEIGHT) + OVERSCAN,
+    sortedItems.length,
+    Math.ceil((scrollTop + visibleHeight) / ITEM_HEIGHT) + OVERSCAN,
   );
 
   return (
-    <div
-      style={vlStyles.scrollContainer}
-      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-    >
-      <div style={{ height: totalHeight, position: 'relative' as const }}>
-        {items.slice(startIndex, endIndex).map((ind, i) => {
-          const index = startIndex + i;
-          const isSelected = ind.id === selectedId;
-          return (
-            <div
-              key={index}
-              style={{
-                ...vlStyles.item,
-                top: index * ITEM_HEIGHT,
-                backgroundColor: isSelected ? '#3a3a6a' : 'transparent',
-              }}
-              onClick={() => onSelect(ind)}
-            >
-              <span style={vlStyles.id}>[{String(ind.id).padStart(idWidth)}]</span>{' '}
-              <span style={vlStyles.solution}>{ind.solution.join(' ')}</span>{' '}
-              <span style={vlStyles.fitness}>f:{String(ind.fitness).padStart(fitWidth)}</span>
-            </div>
-          );
-        })}
+    <div style={vlStyles.wrapper}>
+      <div style={{ ...vlStyles.sortBar, gridTemplateColumns: gridCols }}>
+        <span
+          style={{ ...vlStyles.sortBtn, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          onClick={() => toggleSort('id')}
+          title="Sort by index"
+          data-help="Population index — click to sort"
+        >
+          #
+        </span>
+        <span
+          style={{ ...vlStyles.sortBtn, gridColumn: '10', textAlign: 'left' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
+          onClick={() => toggleSort('fitness')}
+          title="Sort by fitness"
+          data-help="Fitness score (0–28) — number of non-attacking queen pairs. Click to sort"
+        >
+          {arrow('fitness')}{'\uD83C\uDFC5'}
+        </span>
+        {showBornGen && (
+          <span
+            style={{ gridColumn: '11', textAlign: 'right' as const, color: '#555' }}
+            title="Generation this individual was born in"
+            data-help="Birth generation — which generation created this individual (not sortable)"
+          >
+            {'\uD83D\uDC23'}
+          </span>
+        )}
+        {partnerCounts && (
+          <span
+            style={{ ...vlStyles.sortBtn, gridColumn: '11', textAlign: 'right' as const, color: sortField === 'partners' ? '#ffd700' : '#555' }}
+            onClick={() => toggleSort('partners')}
+            title="Sort by number of partners"
+            data-help="Number of times this individual was selected as a breeding partner. Click to sort"
+          >
+            {arrow('partners')}P
+          </span>
+        )}
+      </div>
+      <div
+        ref={containerRef}
+        style={vlStyles.scrollContainer}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
+        <div style={{ height: totalHeight, position: 'relative' as const }}>
+          {sortedItems.slice(startIndex, endIndex).map((ind, i) => {
+            const index = startIndex + i;
+            const isSelected = ind.id === selectedId;
+            const stripe = index % 2 === 1;
+            return (
+              <div
+                key={index}
+                style={{
+                  ...vlStyles.item,
+                  gridTemplateColumns: gridCols,
+                  top: index * ITEM_HEIGHT,
+                  backgroundColor: isSelected ? '#3a3a6a' : stripe ? '#16162e' : 'transparent',
+                }}
+                onClick={() => onSelect(ind)}
+              >
+                <span style={vlStyles.id}>[{String(ind.id).padStart(idWidth)}]</span>
+                {ind.solution.map((gene, gi) => (
+                  <span key={gi} style={vlStyles.gene}>{gene}</span>
+                ))}
+                <span style={vlStyles.fitness}>f:{String(ind.fitness).padStart(fitWidth)}</span>
+                {showBornGen && (
+                  <span style={vlStyles.bornGen}>{ind.bornGeneration ?? 0}</span>
+                )}
+                {partnerCounts && (
+                  <span style={vlStyles.partnerCount}>{partnerCounts.get(ind.id) ?? 0}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 };
 
+// ---------------------------------------------------------------------------
+// Virtual scroll list for mutations — shows what changed
+// ---------------------------------------------------------------------------
+
+const MutationList: React.FC<{
+  records: MutationRecord[];
+  onSelect: (ind: Individual) => void;
+  selectedId: number | null;
+  selectedSide?: 'before' | 'after' | null;
+  onSelectSide?: (side: 'before' | 'after') => void;
+}> = ({ records, onSelect, selectedId, selectedSide, onSelectSide }) => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [resizeTick, setResizeTick] = useState(0);
+  const [sortField, setSortField] = useState<SortField | null>('id');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const toggleSort = useCallback((field: SortField) => {
+    setSortField((prev) => {
+      if (prev === field) {
+        setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+        return field;
+      }
+      setSortDir('asc');
+      return field;
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    setResizeTick((t) => t + 1); // sync measure before paint
+    const ro = new ResizeObserver(() => {
+      setResizeTick((t) => t + 1);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  void resizeTick;
+  const visibleHeight = containerRef.current?.clientHeight || DEFAULT_VISIBLE_HEIGHT;
+
+  const { idWidth, fitWidth } = useMemo(() => {
+    let maxId = 0, maxFit = 0;
+    for (const rec of records) {
+      if (rec.individual.id > maxId) maxId = rec.individual.id;
+      if (rec.individual.fitness > maxFit) maxFit = rec.individual.fitness;
+    }
+    return { idWidth: String(maxId).length, fitWidth: String(maxFit).length };
+  }, [records]);
+
+  const sortedRecords = useMemo(() => {
+    if (!sortField || sortField === 'partners') return records;
+    const mul = sortDir === 'asc' ? 1 : -1;
+    return [...records].sort((a, b) =>
+      (a.individual[sortField] - b.individual[sortField]) * mul,
+    );
+  }, [records, sortField, sortDir]);
+
+  if (records.length === 0) {
+    return <div style={vlStyles.empty}>No mutations this generation</div>;
+  }
+
+  const totalHeight = sortedRecords.length * ITEM_HEIGHT;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(
+    sortedRecords.length,
+    Math.ceil((scrollTop + visibleHeight) / ITEM_HEIGHT) + OVERSCAN,
+  );
+
+  // Grid: [id] before_genes f:XX → after_genes f:XX
+  const gridCols = '5ch repeat(8, 2ch) 4ch 2ch repeat(8, 2ch) 4ch';
+
+  return (
+    <div style={vlStyles.wrapper}>
+      <div style={{ ...mutStyles.sortBar, gridTemplateColumns: gridCols }}>
+        <span
+          style={{ ...vlStyles.sortBtn, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          onClick={() => toggleSort('id')}
+          title="Sort by index"
+        >
+          #
+        </span>
+        <span style={{ gridColumn: '10', textAlign: 'right' as const, color: '#666' }}>
+          before
+        </span>
+        <span />
+        <span style={{ gridColumn: '20', textAlign: 'right' as const, color: '#666' }}>
+          after
+        </span>
+      </div>
+      <div
+        ref={containerRef}
+        style={vlStyles.scrollContainer}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
+        <div style={{ height: totalHeight, position: 'relative' as const }}>
+          {sortedRecords.slice(startIndex, endIndex).map((rec, i) => {
+            const index = startIndex + i;
+            const ind = rec.individual;
+            const isSelected = ind.id === selectedId;
+            const stripe = index % 2 === 1;
+            const fitDelta = ind.fitness - rec.preMutationFitness;
+            const isBeforeSelected = isSelected && selectedSide === 'before';
+            const isAfterSelected = isSelected && selectedSide === 'after';
+            const beforeInd: Individual = {
+              id: ind.id,
+              solution: rec.preMutationSolution,
+              fitness: rec.preMutationFitness,
+            };
+            return (
+              <div
+                key={index}
+                style={{
+                  ...mutStyles.item,
+                  gridTemplateColumns: gridCols,
+                  top: index * ITEM_HEIGHT,
+                  backgroundColor: stripe ? '#16162e' : 'transparent',
+                }}
+              >
+                <span style={vlStyles.id}>[{String(ind.id).padStart(idWidth)}]</span>
+                {/* Before genome — clickable */}
+                <span
+                  style={{
+                    ...mutStyles.halfClickable,
+                    backgroundColor: isBeforeSelected ? '#3a3a6a' : 'transparent',
+                    gridColumn: '2 / 11',
+                    display: 'grid',
+                    gridTemplateColumns: 'subgrid',
+                  }}
+                  onClick={() => { onSelect(beforeInd); onSelectSide?.('before'); }}
+                >
+                  {rec.preMutationSolution.map((gene, gi) => (
+                    <span
+                      key={`b${gi}`}
+                      style={gi === rec.geneIndex ? mutStyles.oldGene : mutStyles.dimGene}
+                    >
+                      {gene}
+                    </span>
+                  ))}
+                  <span style={mutStyles.dimFitness}>f:{String(rec.preMutationFitness).padStart(fitWidth)}</span>
+                </span>
+                {/* Arrow */}
+                <span style={mutStyles.arrow}>{'\u2192'}</span>
+                {/* After genome — clickable */}
+                <span
+                  style={{
+                    ...mutStyles.halfClickable,
+                    backgroundColor: isAfterSelected ? '#3a3a6a' : 'transparent',
+                    gridColumn: '12 / 21',
+                    display: 'grid',
+                    gridTemplateColumns: 'subgrid',
+                  }}
+                  onClick={() => { onSelect(ind); onSelectSide?.('after'); }}
+                >
+                  {ind.solution.map((gene, gi) => (
+                    <span
+                      key={`a${gi}`}
+                      style={gi === rec.geneIndex ? mutStyles.mutatedGene : vlStyles.gene}
+                    >
+                      {gene}
+                    </span>
+                  ))}
+                  <span style={{
+                    ...vlStyles.fitness,
+                    color: fitDelta > 0 ? '#4caf50' : fitDelta < 0 ? '#ff6b6b' : '#ffd700',
+                  }}>
+                    f:{String(ind.fitness).padStart(fitWidth)}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Virtual scroll list for children — shows parent genomes inline
+// ---------------------------------------------------------------------------
+
+interface ChildRecord {
+  child: Individual;
+  parentA: Individual;
+  parentB: Individual;
+  crossoverPoint: number;
+}
+
+const ChildrenList: React.FC<{
+  records: ChildRecord[];
+  onSelect: (ind: Individual, source: string) => void;
+  selectedId: number | null;
+}> = ({ records, onSelect, selectedId }) => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [resizeTick, setResizeTick] = useState(0);
+  const [sortField, setSortField] = useState<SortField | null>('id');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const toggleSort = useCallback((field: SortField) => {
+    setSortField((prev) => {
+      if (prev === field) {
+        setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+        return field;
+      }
+      setSortDir('asc');
+      return field;
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    setResizeTick((t) => t + 1); // sync measure before paint
+    const ro = new ResizeObserver(() => {
+      setResizeTick((t) => t + 1);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  void resizeTick;
+  const visibleHeight = containerRef.current?.clientHeight || DEFAULT_VISIBLE_HEIGHT;
+
+  const { idWidth, fitWidth } = useMemo(() => {
+    let maxId = 0, maxFit = 0;
+    for (const rec of records) {
+      if (rec.child.id > maxId) maxId = rec.child.id;
+      if (rec.child.fitness > maxFit) maxFit = rec.child.fitness;
+    }
+    return { idWidth: String(maxId).length, fitWidth: String(maxFit).length };
+  }, [records]);
+
+  const parentIdWidth = useMemo(() => {
+    let maxId = 0;
+    for (const rec of records) {
+      if (rec.parentA.id > maxId) maxId = rec.parentA.id;
+      if (rec.parentB.id > maxId) maxId = rec.parentB.id;
+    }
+    return String(maxId).length;
+  }, [records]);
+
+  const sortedRecords = useMemo(() => {
+    if (!sortField || sortField === 'partners') return records;
+    const mul = sortDir === 'asc' ? 1 : -1;
+    return [...records].sort((a, b) =>
+      (a.child[sortField] - b.child[sortField]) * mul,
+    );
+  }, [records, sortField, sortDir]);
+
+  if (records.length === 0) {
+    return <div style={vlStyles.empty}>No children this generation</div>;
+  }
+
+  const totalHeight = sortedRecords.length * ITEM_HEIGHT;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(
+    sortedRecords.length,
+    Math.ceil((scrollTop + visibleHeight) / ITEM_HEIGHT) + OVERSCAN,
+  );
+
+  // Grid: [childId] child_genes f:XX ← pA_genes [pAid] pB_genes [pBid]
+  const gridCols = `5ch repeat(8, 2ch) 4ch 2ch repeat(8, 2ch) 4ch repeat(8, 2ch) 4ch`;
+
+  return (
+    <div style={vlStyles.wrapper}>
+      <div style={{ ...mutStyles.sortBar, gridTemplateColumns: gridCols }}>
+        <span
+          style={{ ...vlStyles.sortBtn, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          onClick={() => toggleSort('id')}
+          title="Sort by index"
+        >
+          #
+        </span>
+        <span
+          style={{ ...vlStyles.sortBtn, gridColumn: '10', textAlign: 'left' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
+          onClick={() => toggleSort('fitness')}
+          title="Sort by fitness"
+        >
+          {'\uD83C\uDFC5'}
+        </span>
+        <span style={{ gridColumn: '12 / 21', textAlign: 'center' as const, color: '#666' }}>parent A</span>
+        <span style={{ gridColumn: '21 / 30', textAlign: 'center' as const, color: '#666' }}>parent B</span>
+      </div>
+      <div
+        ref={containerRef}
+        style={vlStyles.scrollContainer}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
+        <div style={{ height: totalHeight, position: 'relative' as const }}>
+          {sortedRecords.slice(startIndex, endIndex).map((rec, i) => {
+            const index = startIndex + i;
+            const { child, parentA, parentB, crossoverPoint } = rec;
+            const isSelected = child.id === selectedId;
+            const stripe = index % 2 === 1;
+            const isChildA = child.id % 2 === 0;
+            return (
+              <div
+                key={index}
+                style={{
+                  ...mutStyles.item,
+                  gridTemplateColumns: gridCols,
+                  top: index * ITEM_HEIGHT,
+                  backgroundColor: stripe ? '#16162e' : 'transparent',
+                }}
+              >
+                <span style={vlStyles.id}>[{String(child.id).padStart(idWidth)}]</span>
+                {/* Child genome — color genes by source parent */}
+                <span
+                  style={{
+                    ...mutStyles.halfClickable,
+                    backgroundColor: isSelected ? '#3a3a6a' : 'transparent',
+                    gridColumn: '2 / 11',
+                    display: 'grid',
+                    gridTemplateColumns: 'subgrid',
+                  }}
+                  onClick={() => onSelect(child, 'Children')}
+                >
+                  {child.solution.map((gene, gi) => {
+                    const fromA = isChildA ? gi < crossoverPoint : gi >= crossoverPoint;
+                    return (
+                      <span
+                        key={gi}
+                        style={{ textAlign: 'center' as const, color: fromA ? '#6bc5f7' : '#c49df7' }}
+                      >
+                        {gene}
+                      </span>
+                    );
+                  })}
+                  <span style={vlStyles.fitness}>f:{String(child.fitness).padStart(fitWidth)}</span>
+                </span>
+                {/* Arrow */}
+                <span style={mutStyles.arrow}>{'\u2190'}</span>
+                {/* Parent A genome — clickable */}
+                <span
+                  style={{
+                    ...mutStyles.halfClickable,
+                    backgroundColor: selectedId === parentA.id ? '#3a3a6a' : 'transparent',
+                    gridColumn: '12 / 21',
+                    display: 'grid',
+                    gridTemplateColumns: 'subgrid',
+                  }}
+                  onClick={() => onSelect(parentA, 'Parent A')}
+                  title={`Parent A #${parentA.id}`}
+                >
+                  {parentA.solution.map((gene, gi) => (
+                    <span key={gi} style={{ textAlign: 'center' as const, color: '#6bc5f7' }}>{gene}</span>
+                  ))}
+                  <span style={{ ...childStyles.parentFit }}>[{String(parentA.id).padStart(parentIdWidth)}]</span>
+                </span>
+                {/* Parent B genome — clickable */}
+                <span
+                  style={{
+                    ...mutStyles.halfClickable,
+                    backgroundColor: selectedId === parentB.id ? '#3a3a6a' : 'transparent',
+                    gridColumn: '21 / 30',
+                    display: 'grid',
+                    gridTemplateColumns: 'subgrid',
+                  }}
+                  onClick={() => onSelect(parentB, 'Parent B')}
+                  title={`Parent B #${parentB.id}`}
+                >
+                  {parentB.solution.map((gene, gi) => (
+                    <span key={gi} style={{ textAlign: 'center' as const, color: '#c49df7' }}>{gene}</span>
+                  ))}
+                  <span style={{ ...childStyles.parentFit }}>[{String(parentB.id).padStart(parentIdWidth)}]</span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Actual parents — master/detail: left = parents, right = partners of selected
+// ---------------------------------------------------------------------------
+
+interface PartnerEntry {
+  partner: Individual;
+  pairIndex: number;
+  side: 'A' | 'B'; // which side this parent was on
+}
+
+const ActualParentsList: React.FC<{
+  breedingData: GenerationBreedingData;
+  onSelect: (ind: Individual, source: string) => void;
+  selectedId: number | null;
+}> = ({ breedingData, onSelect, selectedId }) => {
+  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+
+  // Build partner map: parentId -> list of partners
+  const partnerMap = useMemo(() => {
+    const map = new Map<number, PartnerEntry[]>();
+    const { aParents, bParents } = breedingData;
+    for (let i = 0; i < aParents.length; i++) {
+      const pA = aParents[i]!;
+      const pB = bParents[i]!;
+      // For parent A, the partner is B
+      if (!map.has(pA.id)) map.set(pA.id, []);
+      map.get(pA.id)!.push({ partner: pB, pairIndex: i, side: 'A' });
+      // For parent B, the partner is A
+      if (!map.has(pB.id)) map.set(pB.id, []);
+      map.get(pB.id)!.push({ partner: pA, pairIndex: i, side: 'B' });
+    }
+    return map;
+  }, [breedingData]);
+
+  const partnerCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const [id, entries] of partnerMap) {
+      counts.set(id, entries.length);
+    }
+    return counts;
+  }, [partnerMap]);
+
+  const partners = useMemo(() => {
+    if (selectedParentId === null) return [];
+    return partnerMap.get(selectedParentId) ?? [];
+  }, [partnerMap, selectedParentId]);
+
+  const partnerIndividuals = useMemo(() => partners.map((p) => p.partner), [partners]);
+
+  const partnerPartnerCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const p of partners) {
+      counts.set(p.partner.id, partnerMap.get(p.partner.id)?.length ?? 0);
+    }
+    return counts;
+  }, [partners, partnerMap]);
+
+  const handleSelectParent = useCallback(
+    (ind: Individual) => {
+      setSelectedParentId(ind.id);
+      onSelect(ind, 'Actual parents');
+    },
+    [onSelect],
+  );
+
+  const selectedParent = useMemo(() => {
+    if (selectedParentId === null) return null;
+    return breedingData.actualParents.find((p) => p.id === selectedParentId) ?? null;
+  }, [breedingData.actualParents, selectedParentId]);
+
+  return (
+    <div style={actualParentStyles.container}>
+      <div style={actualParentStyles.half}>
+        <div style={actualParentStyles.subHeader}>
+          Parents <span style={styles.count}>({breedingData.actualParents.length})</span>
+        </div>
+        <VirtualList
+          items={breedingData.actualParents}
+          onSelect={handleSelectParent}
+          selectedId={selectedParentId}
+          partnerCounts={partnerCounts}
+        />
+      </div>
+      <div style={actualParentStyles.half}>
+        <div style={actualParentStyles.subHeader}>
+          {selectedParent
+            ? <>Partners of #{selectedParent.id} <span style={styles.count}>({partners.length} matings)</span></>
+            : 'Select a parent'}
+        </div>
+        <VirtualList
+          items={partnerIndividuals}
+          onSelect={(ind) => onSelect(ind, 'Partner')}
+          selectedId={selectedId !== selectedParentId ? selectedId : null}
+          emptyText={selectedParentId !== null ? 'No partners found' : 'Select a parent to see partners'}
+          partnerCounts={partnerPartnerCounts}
+        />
+      </div>
+    </div>
+  );
+};
+
+const actualParentStyles: Record<string, React.CSSProperties> = {
+  container: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  half: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+    minHeight: 0,
+  },
+  subHeader: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    color: '#ccc',
+    fontWeight: 'bold',
+  },
+};
+
+const childStyles: Record<string, React.CSSProperties> = {
+  parentFit: {
+    color: '#666',
+    whiteSpace: 'nowrap' as const,
+    textAlign: 'right' as const,
+    fontSize: 10,
+  },
+};
+
+const mutStyles: Record<string, React.CSSProperties> = {
+  sortBar: {
+    columnGap: 4,
+    padding: '2px 6px',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    backgroundColor: '#1a1a35',
+    borderRadius: '4px 4px 0 0',
+    border: '1px solid #2a2a4a',
+    borderBottom: 'none',
+    display: 'grid',
+  },
+  item: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: ITEM_HEIGHT,
+    lineHeight: `${ITEM_HEIGHT}px`,
+    paddingLeft: 6,
+    paddingRight: 6,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    color: '#e0e0e0',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: 0,
+    columnGap: 4,
+  },
+  dimGene: {
+    color: '#777',
+    textAlign: 'center' as const,
+  },
+  oldGene: {
+    color: '#ff6b6b',
+    textAlign: 'center' as const,
+  },
+  mutatedGene: {
+    color: '#ff6b6b',
+    fontWeight: 'bold',
+    textAlign: 'center' as const,
+  },
+  dimFitness: {
+    color: '#666',
+    whiteSpace: 'nowrap' as const,
+    textAlign: 'right' as const,
+  },
+  arrow: {
+    color: '#555',
+    textAlign: 'center' as const,
+  },
+  halfClickable: {
+    cursor: 'pointer',
+    borderRadius: 2,
+  },
+};
+
 const vlStyles: Record<string, React.CSSProperties> = {
+  wrapper: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    flexGrow: 1,
+    minHeight: 0,
+  },
+  sortBar: {
+    display: 'grid',
+    gridTemplateColumns: '5ch repeat(8, 2ch) 4ch',
+    columnGap: 4,
+    padding: '2px 6px',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    backgroundColor: '#1a1a35',
+    borderRadius: '4px 4px 0 0',
+    border: '1px solid #2a2a4a',
+    borderBottom: 'none',
+  },
+  sortBtn: {
+    cursor: 'pointer',
+    userSelect: 'none' as const,
+  },
   scrollContainer: {
-    height: VISIBLE_HEIGHT,
+    minHeight: MIN_CONTAINER_HEIGHT,
+    flexGrow: 1,
     overflowY: 'auto' as const,
     backgroundColor: '#12122a',
-    borderRadius: 4,
+    borderRadius: '0 0 4px 4px',
     border: '1px solid #2a2a4a',
   },
   item: {
@@ -93,15 +787,19 @@ const vlStyles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     color: '#e0e0e0',
     cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    display: 'grid',
+    gridTemplateColumns: '5ch repeat(8, 2ch) 4ch',
+    gap: 0,
+    columnGap: 4,
   },
-  id: { color: '#888' },
-  solution: { color: '#e0e0e0' },
-  fitness: { color: '#ffd700', marginLeft: 4 },
+  id: { color: '#888', whiteSpace: 'nowrap' as const },
+  gene: { color: '#e0e0e0', textAlign: 'center' as const },
+  fitness: { color: '#ffd700', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
+  bornGen: { color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, fontSize: 10 },
+  partnerCount: { color: '#8888cc', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, fontSize: 10 },
   empty: {
-    height: VISIBLE_HEIGHT,
+    minHeight: MIN_CONTAINER_HEIGHT,
+    flexGrow: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -118,10 +816,9 @@ const vlStyles: Record<string, React.CSSProperties> = {
 // Iteration data dropdown categories
 // ---------------------------------------------------------------------------
 
-type CategoryKey = 'Breeding Pairs' | 'Eligible parents' | 'Actual parents' | 'Children' | 'Mutations';
+export type CategoryKey = 'Eligible parents' | 'Actual parents' | 'Children' | 'Mutations';
 
 const CATEGORY_HELP: Record<CategoryKey, string> = {
-  'Breeding Pairs': 'Side-by-side view of each parent pair and the two children produced by their crossover',
   'Eligible parents': 'All individuals from the previous generation whose fitness qualified them for the selection pool',
   'Actual parents': 'The specific individuals chosen by roulette-wheel selection to breed this generation',
   'Children': 'All offspring produced by crossover — each pair of parents creates two children by swapping gene segments',
@@ -133,7 +830,6 @@ function getCategoryData(
   category: CategoryKey,
 ): Individual[] {
   switch (category) {
-    case 'Breeding Pairs': return [];
     case 'Eligible parents': return breedingData.eligibleParents;
     case 'Actual parents': return breedingData.actualParents;
     case 'Children': return breedingData.allChildren;
@@ -149,92 +845,89 @@ export const BreedingListboxes: React.FC<Props> = ({
   breedingData,
   generation,
   onSelectIndividual,
+  selectedCategory,
+  onCategoryChange,
 }) => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('Breeding Pairs');
+  const [mutationSide, setMutationSide] = useState<'before' | 'after' | null>(null);
 
   const handleSelect = useCallback(
     (ind: Individual, source: string) => {
       setSelectedId(ind.id);
+      if (source !== 'Mutations') setMutationSide(null);
       onSelectIndividual(ind, source);
     },
     [onSelectIndividual],
   );
 
-  const categoryData = breedingData && selectedCategory !== 'Breeding Pairs'
+  const categoryData = breedingData
     ? getCategoryData(breedingData, selectedCategory)
     : [];
+
+  const childRecords = useMemo(() => {
+    if (!breedingData || selectedCategory !== 'Children') return [];
+    const { aParents, bParents, crossoverPoints } = breedingData;
+    const out: ChildRecord[] = [];
+    for (const child of breedingData.allChildren) {
+      const pairIndex = Math.floor(child.id / 2);
+      const pA = aParents[pairIndex];
+      const pB = bParents[pairIndex];
+      const cp = crossoverPoints[pairIndex];
+      if (pA && pB && cp !== undefined) {
+        out.push({ child, parentA: pA, parentB: pB, crossoverPoint: cp });
+      }
+    }
+    return out;
+  }, [breedingData, selectedCategory]);
 
   return (
     <div style={styles.panel}>
       <div style={styles.titleRow}>
-        <div style={styles.title} data-help="Raw breeding data showing parents and children from each generation">Breeding Results — Gen {Math.max(generation, 1)}</div>
+        <div style={styles.title} data-help="Raw breeding data showing parents and children from each generation">Breeding Results — Gen {generation}</div>
         <select
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value as CategoryKey)}
+          onChange={(e) => onCategoryChange(e.target.value as CategoryKey)}
           style={styles.select}
           data-help={CATEGORY_HELP[selectedCategory]}
+          disabled={generation === 0}
         >
-          <option value="Breeding Pairs">Breeding Pairs</option>
           <option value="Eligible parents">Eligible parents</option>
           <option value="Actual parents">Actual parents</option>
           <option value="Children">Children</option>
           <option value="Mutations">Mutations</option>
         </select>
-        {selectedCategory !== 'Breeding Pairs' && (
-          <span style={styles.count}>({categoryData.length})</span>
-        )}
+        <span style={styles.count}>
+          ({selectedCategory === 'Children' ? childRecords.length : categoryData.length})
+        </span>
       </div>
 
-      {selectedCategory === 'Breeding Pairs' ? (
-        <div style={styles.grid} data-help="Click any individual to view its queen placement on the board">
-          <div style={styles.listCol}>
-            <div style={styles.listHeader} data-help="First parent in each breeding pair — selected by roulette wheel">
-              Parent A <span style={styles.count}>({breedingData?.aParents.length ?? 0})</span>
-            </div>
-            <VirtualList
-              items={breedingData?.aParents ?? []}
-              onSelect={(ind) => handleSelect(ind, 'Parent A')}
-              selectedId={selectedId}
-            />
-          </div>
-          <div style={styles.listCol}>
-            <div style={styles.listHeader} data-help="Second parent in each breeding pair — paired with Parent A for crossover">
-              Parent B <span style={styles.count}>({breedingData?.bParents.length ?? 0})</span>
-            </div>
-            <VirtualList
-              items={breedingData?.bParents ?? []}
-              onSelect={(ind) => handleSelect(ind, 'Parent B')}
-              selectedId={selectedId}
-            />
-          </div>
-          <div style={styles.listCol}>
-            <div style={styles.listHeader} data-help="First child from crossover — gets Parent A's left genes and Parent B's right genes">
-              Child A <span style={styles.count}>({breedingData?.aChildren.length ?? 0})</span>
-            </div>
-            <VirtualList
-              items={breedingData?.aChildren ?? []}
-              onSelect={(ind) => handleSelect(ind, 'Child A')}
-              selectedId={selectedId}
-            />
-          </div>
-          <div style={styles.listCol}>
-            <div style={styles.listHeader} data-help="Second child from crossover — gets Parent B's left genes and Parent A's right genes">
-              Child B <span style={styles.count}>({breedingData?.bChildren.length ?? 0})</span>
-            </div>
-            <VirtualList
-              items={breedingData?.bChildren ?? []}
-              onSelect={(ind) => handleSelect(ind, 'Child B')}
-              selectedId={selectedId}
-            />
-          </div>
-        </div>
+      {selectedCategory === 'Mutations' ? (
+        <MutationList
+          records={breedingData?.mutationRecords ?? []}
+          onSelect={(ind) => handleSelect(ind, 'Mutations')}
+          selectedId={selectedId}
+          selectedSide={mutationSide}
+          onSelectSide={setMutationSide}
+        />
+      ) : selectedCategory === 'Children' ? (
+        <ChildrenList
+          records={childRecords}
+          onSelect={handleSelect}
+          selectedId={selectedId}
+        />
+      ) : selectedCategory === 'Actual parents' && breedingData ? (
+        <ActualParentsList
+          breedingData={breedingData}
+          onSelect={handleSelect}
+          selectedId={selectedId}
+        />
       ) : (
         <VirtualList
           items={categoryData}
           onSelect={(ind) => handleSelect(ind, selectedCategory)}
           selectedId={selectedId}
-          emptyText={`No ${selectedCategory.toLowerCase()} this generation`}
+          emptyText={selectedCategory === 'Eligible parents' ? 'Loading population…' : `No ${selectedCategory.toLowerCase()} this generation`}
+          showBornGen={selectedCategory === 'Eligible parents'}
         />
       )}
     </div>
@@ -251,6 +944,10 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column' as const,
+    width: '100%',
+    maxWidth: 900,
+    marginLeft: 'auto',
+    marginRight: 'auto',
   },
   titleRow: {
     display: 'flex',
@@ -259,33 +956,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   title: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: 'monospace',
     color: '#aaa',
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gridTemplateRows: '1fr 1fr',
-    gap: 8,
-    flex: 1,
-    minHeight: 0,
-    fontFamily: 'monospace',
-    fontSize: 11,
-  },
-  listCol: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 4,
-    minHeight: 0,
-  },
-  listHeader: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    color: '#ccc',
-    fontWeight: 'bold',
   },
   count: {
     color: '#777',

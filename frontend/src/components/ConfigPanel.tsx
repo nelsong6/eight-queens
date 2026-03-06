@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { AlgorithmConfig, StepStatistics, CumulativeStatistics } from '../engine/types';
 import { DEFAULT_CONFIG, MAX_FITNESS } from '../engine/types';
-import type { Preset } from '../api/client';
+import type { Preset } from '../data/presets';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -16,7 +16,7 @@ interface Props {
   bestFitness: number;
   avgFitness: number;
   solved: boolean;
-  statusMessage?: string;
+  statusMessage?: { label: string; value: string } | null;
 }
 
 const StatRow: React.FC<{ label: string; value: string; help?: string }> = ({ label, value, help }) => (
@@ -91,74 +91,71 @@ export const ConfigPanel: React.FC<Props> = ({
           >
             <option value="">Custom</option>
             {presets.map((p) => (
-              <option key={p.id} value={p.id}>
+              <option key={p.id} value={p.id} title={p.description}>
                 {p.name}
               </option>
             ))}
           </select>
         </div>
+        {selectedPresetId && (
+          <div style={styles.presetDescription}>
+            {presets.find((p) => p.id === selectedPresetId)?.description}
+          </div>
+        )}
 
         {/* Population */}
-        <div style={styles.statRow} data-help="Number of individuals created each generation">
+        <div style={styles.statRow} data-help="Number of individuals created each generation. Use mousewheel or arrow keys to adjust.">
           <span style={styles.statLabel}>Population</span>
-          {isConfig ? (
-            <input
-              type="number"
-              min={50}
-              max={50000}
-              step={50}
-              value={populationSize}
-              onChange={(e) => { setSelectedPresetId(''); setPopulationSize(Number(e.target.value)); }}
-              style={styles.inlineInput}
-            />
-          ) : (
-            <span style={styles.statValue}>{displayPop.toLocaleString()}</span>
-          )}
+          <input
+            type="number"
+            min={50}
+            max={50000}
+            step={50}
+            value={displayPop}
+            onChange={(e) => { setSelectedPresetId(''); setPopulationSize(Number(e.target.value)); }}
+            disabled={!isConfig}
+            style={{ ...styles.inlineInput, ...(isConfig ? {} : styles.lockedInput) }}
+          />
         </div>
 
         {/* Crossover */}
-        <div style={styles.statRow} data-help="Gene position range where chromosomes can be split during breeding">
+        <div style={styles.statRow} data-help="Gene position range where chromosomes can be split during breeding. Use mousewheel or arrow keys to adjust.">
           <span style={styles.statLabel}>Crossover</span>
-          {isConfig ? (
-            <span style={styles.inlineGroup}>
-              [<input
-                type="number"
-                min={1}
-                max={6}
-                value={crossoverMin}
-                onChange={(e) => { setSelectedPresetId(''); setCrossoverMin(Number(e.target.value)); }}
-                style={styles.inlineInputSmall}
-              />, <input
-                type="number"
-                min={1}
-                max={6}
-                value={crossoverMax}
-                onChange={(e) => { setSelectedPresetId(''); setCrossoverMax(Number(e.target.value)); }}
-                style={styles.inlineInputSmall}
-              />]
-            </span>
-          ) : (
-            <span style={styles.statValue}>[{displayCrossMin}, {displayCrossMax}]</span>
-          )}
+          <span style={styles.inlineGroup}>
+            [<input
+              type="number"
+              min={1}
+              max={6}
+              value={displayCrossMin}
+              onChange={(e) => { setSelectedPresetId(''); setCrossoverMin(Number(e.target.value)); }}
+              disabled={!isConfig}
+              style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
+            />, <input
+              type="number"
+              min={1}
+              max={6}
+              value={displayCrossMax}
+              onChange={(e) => { setSelectedPresetId(''); setCrossoverMax(Number(e.target.value)); }}
+              disabled={!isConfig}
+              style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
+            />]
+          </span>
         </div>
 
         {/* Mutation */}
-        <div style={styles.statRow} data-help="Probability of a random gene change after crossover">
+        <div style={styles.statRow} data-help="Probability of a random gene change after crossover. Use mousewheel or arrow keys to adjust.">
           <span style={styles.statLabel}>Mutation</span>
-          {isConfig ? (
-            <span style={styles.inlineGroup}>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={Math.round(mutationRate * 100)}
-                onChange={(e) => { setSelectedPresetId(''); setMutationRate(Number(e.target.value) / 100); }}
-                style={styles.inlineInputSmall}
-              />%
-            </span>
-          ) : (
-            <span style={styles.statValue}>{(displayMut * 100).toFixed(0)}%</span>
-          )}
+          <span style={styles.inlineGroup}>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={isConfig ? Math.round(mutationRate * 100) : Math.round(displayMut * 100)}
+              onChange={(e) => { setSelectedPresetId(''); setMutationRate(Number(e.target.value) / 100); }}
+              disabled={!isConfig}
+              style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
+            />%
+          </span>
         </div>
       </div>
 
@@ -178,7 +175,7 @@ export const ConfigPanel: React.FC<Props> = ({
           help="Current state of the algorithm — Ready, Running, or Solved"
         />
         {statusMessage && (
-          <div style={styles.statusMessage}>{statusMessage}</div>
+          <StatRow label={statusMessage.label} value={statusMessage.value || '\u00A0'} />
         )}
       </div>
 
@@ -266,8 +263,11 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 16,
     border: '1px solid #2a2a4a',
-    flex: '1 1 200px',
+    flex: 1,
     minWidth: 180,
+    minHeight: 0,
+    overflowY: 'auto' as const,
+    boxSizing: 'border-box' as const,
   },
   title: {
     margin: '0 0 12px 0',
@@ -276,6 +276,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#aaa',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  presetDescription: {
+    fontSize: 9,
+    fontFamily: 'monospace',
+    color: '#7a7a9a',
+    fontStyle: 'italic' as const,
+    padding: '2px 0 4px 0',
   },
   presetSelect: {
     padding: '2px 6px',
@@ -359,6 +366,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     color: '#ccc',
     lineHeight: 1.3,
+    whiteSpace: 'pre-line' as const,
+  },
+  lockedInput: {
+    opacity: 0.7,
+    cursor: 'default',
   },
   inlineGroup: {
     fontSize: 11,

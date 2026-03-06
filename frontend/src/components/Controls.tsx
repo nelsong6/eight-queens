@@ -5,10 +5,12 @@ type SessionPhase = 'config' | 'running' | 'review';
 interface Props {
   sessionPhase: SessionPhase;
   isRunning: boolean;
-  onPlay: () => void;
+  onPlay: (stepCount: number) => void;
   onPause: () => void;
   onStep: () => void;
   onStepN: (count: number) => void;
+  onBack: () => void;
+  canGoBack: boolean;
   onReset: () => void;
   onNewSession: () => void;
   speed: number;
@@ -28,6 +30,8 @@ export const Controls: React.FC<Props> = ({
   onPause,
   onStep,
   onStepN,
+  onBack,
+  canGoBack,
   onReset,
   onNewSession,
   speed,
@@ -83,13 +87,26 @@ export const Controls: React.FC<Props> = ({
             <polygon points="22,4 12,12 22,20" />
           </svg>
         </button>
+        <button
+          onClick={onBack}
+          className="btn"
+          disabled={isRunning || !canGoBack}
+          data-help="Go back one step (undo last generation or micro phase)"
+          style={{ ...styles.btn, opacity: (isRunning || !canGoBack) ? 0.5 : 1 }}
+          title="Back"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="14,4 4,12 14,20" />
+            <rect x="16" y="4" width="3" height="16" />
+          </svg>
+        </button>
         {isRunning ? (
           <button onClick={onPause} className="btn" data-help="Pause auto-run" style={styles.btn}>
             ⏸
           </button>
         ) : (
           <button
-            onClick={onPlay}
+            onClick={() => onPlay(parseInt(stepCount, 10) || 1)}
             className="btn"
             disabled={!canAct}
             data-help="Continuously run full generations automatically"

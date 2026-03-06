@@ -14,6 +14,7 @@ interface BreadcrumbTrailProps {
   walkthroughPhase: number | null;
   browsePairIndex: number | null;
   zoomedPanel: string | null;
+  breedingCategory: string;
   onSetGranularity: (g: 'full' | 'micro') => void;
   onClearWalkthrough: () => void;
   onClearZoom: () => void;
@@ -36,6 +37,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
   walkthroughPhase,
   browsePairIndex,
   zoomedPanel,
+  breedingCategory,
   onSetGranularity,
   onClearWalkthrough,
   onClearZoom,
@@ -101,10 +103,19 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
         onClick: null,
         helpText: `${label} panel expanded`,
       });
+
+      // Layer 6: Breeding category
+      if (zoomedPanel === 'breeding') {
+        result.push({
+          label: breedingCategory,
+          onClick: null,
+          helpText: `Viewing ${breedingCategory.toLowerCase()}`,
+        });
+      }
     }
 
     return result;
-  }, [sessionPhase, granularity, walkthroughPhase, browsePairIndex, zoomedPanel,
+  }, [sessionPhase, granularity, walkthroughPhase, browsePairIndex, zoomedPanel, breedingCategory,
       onSetGranularity, onClearWalkthrough, onClearZoom]);
 
   return (

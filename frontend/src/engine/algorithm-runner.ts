@@ -139,12 +139,28 @@ export class AlgorithmRunner {
     this._cumulativeStats = this.emptyCumulativeStats();
   }
 
+  /**
+   * Returns a GenerationResult for the initial random population (gen 0).
+   */
+  getInitialResult(): GenerationResult {
+    return this.puzzle.getInitialResult();
+  }
+
   get generation(): number {
     return this._generation;
   }
 
   get solved(): boolean {
     return this._solved;
+  }
+
+  /**
+   * Resize the gen-0 population in place (seeded, deterministic).
+   */
+  resizePopulation(newSize: number): void {
+    if (this._generation !== 0) return;
+    this.config.populationSize = newSize;
+    this.puzzle.resizePopulation(newSize);
   }
 
   get algorithmConfig(): Readonly<AlgorithmConfig> {

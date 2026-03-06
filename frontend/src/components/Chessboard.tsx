@@ -79,7 +79,7 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
       // Reserve space for label (~20px) + info (~20px)
       const availH = height - 50;
       const s = Math.min(width / BOARD_PX, availH / BOARD_PX);
-      setBoardScale(Math.max(1, s));
+      setBoardScale(s);
     });
     observer.observe(wrapperRef.current);
     return () => observer.disconnect();
@@ -180,9 +180,17 @@ export const Chessboard: React.FC<Props> = ({ individual, label, showAttacks = t
   const isSolved = displayedIndividual?.fitness === MAX_FITNESS;
 
   return (
-    <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs">
+    <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%', justifyContent: 'center' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs">
       {label && <div style={styles.label} data-help="What the board is currently displaying — random placement, best individual, or solution">{label}</div>}
-      <div style={{ ...styles.boardContainer, transform: `scale(${boardScale})`, transformOrigin: 'top center' }}>
+      <div style={{
+        ...styles.boardContainer,
+        transform: `scale(${boardScale})`,
+        transformOrigin: boardScale < 1 ? 'top left' : 'top center',
+        ...(boardScale < 1 ? {
+          marginRight: -(BOARD_PX * (1 - boardScale)),
+          marginBottom: -(BOARD_PX * (1 - boardScale)),
+        } : {}),
+      }}>
         <canvas
           ref={canvasRef}
           width={BOARD_PX}

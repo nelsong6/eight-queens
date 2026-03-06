@@ -34,6 +34,13 @@
   transform: scale(0.96);
 }
 
+/* Hide number spinner buttons (arrow keys still work) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* Always show datalist dropdown arrow */
 input[list]::-webkit-calendar-picker-indicator {
   opacity: 1;

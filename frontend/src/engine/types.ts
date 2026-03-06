@@ -40,6 +40,8 @@ export interface Individual {
   solution: number[];
   /** Fitness score (0-28). 28 = perfect solution. */
   fitness: number;
+  /** The generation number in which this individual was created. */
+  bornGeneration?: number;
 }
 
 /**
@@ -67,6 +69,20 @@ export interface StepStatistics {
 }
 
 /**
+ * Records what a mutation changed on an individual.
+ */
+export interface MutationRecord {
+  individual: Individual;
+  /** The full solution array before the mutation was applied. */
+  preMutationSolution: number[];
+  /** Fitness before the mutation. */
+  preMutationFitness: number;
+  geneIndex: number;
+  oldValue: number;
+  newValue: number;
+}
+
+/**
  * Detailed per-generation breeding data for listbox display.
  * All arrays sorted by fitness descending.
  */
@@ -77,6 +93,7 @@ export interface GenerationBreedingData {
   bChildren: Individual[];
   actualParents: Individual[];
   mutations: Individual[];
+  mutationRecords: MutationRecord[];
   eligibleParents: Individual[];
   allChildren: Individual[];
   /** crossoverPoints[i] = splice position used for breeding pair i. */

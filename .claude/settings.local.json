@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd //c \"rmdir /s /q d:\\\\repos\\\\eight-queens\\\\backend\")"
+    ]
+  }
+}
