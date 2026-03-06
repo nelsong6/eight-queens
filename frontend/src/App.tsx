@@ -10,6 +10,7 @@ import { HelpBar } from './components/HelpBar';
 import { BreadcrumbTrail } from './components/BreadcrumbTrail';
 import { DrillDownTransition } from './components/DrillDownTransition';
 import { ZoomablePanel, type ExpandedRect } from './components/ZoomablePanel';
+import { SpecimenPanel } from './components/SpecimenPanel';
 import { SelectionPhase } from './components/walkthrough/SelectionPhase';
 import { CrossoverPhase } from './components/walkthrough/CrossoverPhase';
 import { MutationPhase } from './components/walkthrough/MutationPhase';
@@ -84,20 +85,44 @@ const App: React.FC = () => {
   }, [zoomedPanel]);
 
   // Eagerly start the algorithm during config phase so gen-0 data is visible.
-  // Re-start whenever pendingConfig changes so the breeding pane stays in sync.
-  // useLayoutEffect to avoid a flash of empty state before the first paint.
+  // When only population size changes, resize in place (same seed, stable board).
+  // For other config changes (or first start), do a full restart with a new seed.
   const algorithmStart = algorithm.start;
+  const algorithmResize = algorithm.resizePopulation;
+  const activeConfigRef = useRef<AlgorithmConfig | null>(null);
   useLayoutEffect(() => {
-    if (sessionPhase === 'config') {
-      algorithmStart(pendingConfig);
+    if (sessionPhase !== 'config') return;
+    const prev = activeConfigRef.current;
+    // Skip if config hasn't changed (e.g. after a reset that already called start)
+    if (
+      prev &&
+      prev.crossoverRange[0] === pendingConfig.crossoverRange[0] &&
+      prev.crossoverRange[1] === pendingConfig.crossoverRange[1] &&
+      prev.mutationRate === pendingConfig.mutationRate &&
+      prev.populationSize === pendingConfig.populationSize
+    ) {
+      return;
     }
-  }, [pendingConfig, sessionPhase, algorithmStart]);
+    if (
+      prev &&
+      prev.crossoverRange[0] === pendingConfig.crossoverRange[0] &&
+      prev.crossoverRange[1] === pendingConfig.crossoverRange[1] &&
+      prev.mutationRate === pendingConfig.mutationRate &&
+      prev.populationSize !== pendingConfig.populationSize
+    ) {
+      algorithmResize(pendingConfig.populationSize);
+      activeConfigRef.current = { ...pendingConfig };
+    } else {
+      algorithmStart(pendingConfig);
+      activeConfigRef.current = { ...pendingConfig };
+    }
+  }, [pendingConfig, sessionPhase, algorithmStart, algorithmResize]);
 
   // Key to force remount of child components on reset
   const [resetKey, setResetKey] = useState(0);
 
   // Random individual shown before algorithm starts
-  const [initialIndividual, setInitialIndividual] = useState<Individual>(() => createRandomIndividual(0));
+  const [initialIndividual, setInitialIndividual] = useState<Individual>(() => createRandomIndividual(Math.floor(Math.random() * 50)));
 
   // Viewed individual state (for click-to-view from breeding listboxes)
   const [viewedIndividual, setViewedIndividual] = useState<Individual | null>(null);
@@ -131,7 +156,9 @@ const App: React.FC = () => {
   }, [sessionPhase, handleStart]);
 
   const handleReset = useCallback(() => {
-    algorithm.reset();
+    // Start a fresh algorithm immediately so lastResult is never null (avoids flicker)
+    algorithm.start(pendingConfigRef.current);
+    activeConfigRef.current = { ...pendingConfigRef.current };
     setViewedIndividual(null);
     setViewedSource('');
     setSessionPhase('config');
@@ -139,7 +166,7 @@ const App: React.FC = () => {
     setGranularity('full');
     setZoomedPanel(null);
     setBreedingCategory('Eligible parents');
-    setInitialIndividual(createRandomIndividual(0));
+    setInitialIndividual(createRandomIndividual(Math.floor(Math.random() * 50)));
     setResetKey((k) => k + 1);
   }, [algorithm]);
 
@@ -345,16 +372,24 @@ const App: React.FC = () => {
       {/* Main content */}
       <div ref={mainRef} style={styles.main}>
         <div style={styles.columns}>
-          {/* Column 1: Board */}
-          <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} companionRect={companionLayout?.boardRect}>
-            <Chessboard
-              individual={displayIndividual}
-              label={displayLabel}
-              showAttacks={hasStarted}
-              speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
-              zoomed={zoomedPanel === 'board' || zoomedPanel === 'breeding'}
-            />
-          </ZoomablePanel>
+          {/* Column 1: Board + Specimen Inspector */}
+          <div style={styles.column}>
+            <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} companionRect={companionLayout?.boardRect}>
+              <Chessboard
+                individual={displayIndividual}
+                label={displayLabel}
+                showAttacks={hasStarted}
+                speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
+                zoomed={zoomedPanel === 'board' || zoomedPanel === 'breeding'}
+              />
+              <SpecimenPanel
+                individual={displayIndividual}
+                breedingData={algorithm.lastResult?.breedingData ?? null}
+                generation={algorithm.generation}
+                onSelectIndividual={handleSelectIndividual}
+              />
+            </ZoomablePanel>
+          </div>
 
           {/* Column 2: Config */}
           <div style={{ ...styles.column, flex: '0.7 1 0' }}>

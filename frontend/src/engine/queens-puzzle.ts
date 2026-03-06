@@ -36,6 +36,7 @@ export class QueensPuzzle {
   private _solved: boolean;
   private _solutionIndividual: Individual | null;
   private _populationSeed: number;
+  private _seededCount: number; // how many individuals have been seeded so far
 
   // Visualization state: last breeding pair
   private _lastParentA: Individual | null;
@@ -73,6 +74,7 @@ export class QueensPuzzle {
 
     // Eagerly create initial random population so it's visible at gen 0
     this._populationSeed = Math.floor(Math.random() * 0xFFFFFFFF);
+    this._seededCount = this.config.populationSize;
     this.parents = [];
     for (let i = 0; i < this.config.populationSize; i++) {
       this.parents.push(createSeededIndividual(i, this._populationSeed));
@@ -451,15 +453,17 @@ export class QueensPuzzle {
     this.config.populationSize = newSize;
 
     if (newSize > this.parents.length) {
-      for (let i = this.parents.length; i < newSize; i++) {
-        this.parents.push(createSeededIndividual(i, this._populationSeed));
+      // Append new seeded individuals, continuing from where we left off
+      const toAdd = newSize - this.parents.length;
+      for (let i = 0; i < toAdd; i++) {
+        this.parents.push(createSeededIndividual(this._seededCount + i, this._populationSeed));
       }
+      this._seededCount += toAdd;
     } else if (newSize < this.parents.length) {
-      // Rebuild to exact size from seed (keeps individuals 0..newSize-1 stable)
-      this.parents.length = 0;
-      for (let i = 0; i < newSize; i++) {
-        this.parents.push(createSeededIndividual(i, this._populationSeed));
-      }
+      // Remove the most recently seeded individuals (highest IDs)
+      const cutoff = this._seededCount - (this.parents.length - newSize);
+      this.parents = this.parents.filter(p => p.id < cutoff);
+      this._seededCount = cutoff;
     } else {
       return; // no change
     }

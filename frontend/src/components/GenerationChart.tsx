@@ -141,23 +141,38 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
         reveal = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
       }
 
-      // Dynamic Y range — smoothly animated to avoid jarring jumps
+      // Dynamic Y range — computed from visible data only so it stays
+      // in sync with the x-axis expansion (no premature vertical shift).
       let yMinTarget = 0;
       const yMax = MAX_FITNESS;
-      if (summaries.length >= 2) {
+      const hasTip = frac > 0 && fullGens < summaries.length;
+      if (visibleCount >= 2 || (visibleCount >= 1 && hasTip)) {
         let dataMin = MAX_FITNESS;
-        for (const s of summaries) {
+        for (let i = 0; i < visibleCount; i++) {
+          const s = summaries[i]!;
           if (s.bestFitness < dataMin) dataMin = s.bestFitness;
           if (s.avgFitness < dataMin) dataMin = s.avgFitness;
         }
+        // Also consider the interpolated tip value if we're mid-transition
+        if (hasTip) {
+          const nextSummary = fullGens + 1 < summaries.length
+            ? summaries[fullGens + 1]!
+            : lookahead;
+          if (nextSummary) {
+            const tipBest = lerp(summaries[fullGens]!.bestFitness, nextSummary.bestFitness, frac);
+            const tipAvg = lerp(summaries[fullGens]!.avgFitness, nextSummary.avgFitness, frac);
+            if (tipBest < dataMin) dataMin = tipBest;
+            if (tipAvg < dataMin) dataMin = tipAvg;
+          }
+        }
         yMinTarget = Math.max(0, Math.floor(dataMin / 4) * 4 - 2);
       }
-      // Lerp toward target — fast enough to keep up with x-axis rescaling
+      // Smoothly animate toward target to avoid jarring snaps from quantization
       const diff = yMinTarget - yMinAnimRef.current;
-      if (Math.abs(diff) < 0.1) {
+      if (Math.abs(diff) < 0.05) {
         yMinAnimRef.current = yMinTarget;
       } else {
-        yMinAnimRef.current += diff * 0.25;
+        yMinAnimRef.current += diff * 0.15;
       }
       const yMin = yMinAnimRef.current;
       const yRange = yMax - yMin;
@@ -170,11 +185,12 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
         return baseline + (target - baseline) * reveal;
       };
 
-      // Grid lines
+      // Grid lines — anchored to integer values so labels stay clean during yMin animation
       const gridStep = yRange <= 12 ? 2 : yRange <= 20 ? 4 : 7;
+      const gridStart = Math.ceil(yMin / gridStep) * gridStep;
       ctx.strokeStyle = COLORS.grid;
       ctx.lineWidth = 1;
-      for (let y = yMin; y <= yMax; y += gridStep) {
+      for (let y = gridStart; y <= yMax; y += gridStep) {
         const py = Math.round(toY(y)) + 0.5;
         ctx.beginPath();
         ctx.moveTo(PADDING.left, py);
@@ -202,7 +218,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
       ctx.font = '9px "Inter", system-ui, sans-serif';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      for (let y = yMin; y <= yMax; y += gridStep) {
+      for (let y = gridStart; y <= yMax; y += gridStep) {
         ctx.fillText(String(y), PADDING.left - 6, toY(y));
       }
 

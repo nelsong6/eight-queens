@@ -1,7 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { AlgorithmConfig, StepStatistics, CumulativeStatistics } from '../engine/types';
 import { DEFAULT_CONFIG, MAX_FITNESS } from '../engine/types';
 import type { Preset } from '../data/presets';
+
+/** Makes a number input respond to mousewheel on hover (no focus required). */
+function useWheelInput(
+  value: number,
+  setValue: (v: number) => void,
+  opts: { min: number; max: number; step?: number; enabled: boolean; clearPreset: () => void },
+) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !opts.enabled) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const step = opts.step ?? 1;
+      const delta = e.deltaY < 0 ? step : -step;
+      const next = Math.min(opts.max, Math.max(opts.min, value + delta));
+      if (next !== value) {
+        opts.clearPreset();
+        setValue(next);
+      }
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [value, setValue, opts.min, opts.max, opts.step, opts.enabled, opts.clearPreset]);
+  return ref;
+}
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -46,9 +72,21 @@ export const ConfigPanel: React.FC<Props> = ({
   const [mutationRate, setMutationRate] = useState(DEFAULT_CONFIG.mutationRate);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('quick-demo');
 
-  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
+  const clearPreset = useCallback(() => setSelectedPresetId(''), []);
+
+  const popRef = useWheelInput(populationSize, setPopulationSize, { min: 50, max: 50000, step: 50, enabled: isConfig, clearPreset });
+  const crossMinRef = useWheelInput(crossoverMin, setCrossoverMin, { min: 1, max: 6, enabled: isConfig, clearPreset });
+  const crossMaxRef = useWheelInput(crossoverMax, setCrossoverMax, { min: 1, max: 6, enabled: isConfig, clearPreset });
+  const mutationDisplay = isConfig ? Math.round(mutationRate * 100) : Math.round((algorithmConfig?.mutationRate ?? 0) * 100);
+  const setMutationFromPercent = useCallback((v: number) => setMutationRate(v / 100), []);
+  const mutRef = useWheelInput(mutationDisplay, setMutationFromPercent, { min: 0, max: 100, enabled: isConfig, clearPreset });
+
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const selectPreset = (id: string) => {
     setSelectedPresetId(id);
+    setDropdownOpen(false);
     const preset = presets.find((p) => p.id === id);
     if (preset) {
       setPopulationSize(preset.config.populationSize);
@@ -57,6 +95,17 @@ export const ConfigPanel: React.FC<Props> = ({
       setMutationRate(preset.config.mutationRate);
     }
   };
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [dropdownOpen]);
 
   useEffect(() => {
     onConfigChange({
@@ -82,31 +131,45 @@ export const ConfigPanel: React.FC<Props> = ({
           <div style={{ ...styles.sectionTitle, borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }} data-help={isConfig ? "Set algorithm parameters before starting a run" : "Algorithm parameters set before the run started"}>
             Initial Settings
           </div>
-          <select
-            value={selectedPresetId}
-            onChange={handlePresetChange}
-            disabled={!isConfig}
-            data-help="Load a predefined configuration"
-            style={{ ...styles.presetSelect, opacity: isConfig ? 1 : 0.4 }}
-          >
-            <option value="">Custom</option>
-            {presets.map((p) => (
-              <option key={p.id} value={p.id} title={p.description}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {selectedPresetId && (
-          <div style={styles.presetDescription}>
-            {presets.find((p) => p.id === selectedPresetId)?.description}
+          <div ref={dropdownRef} style={{ position: 'relative' as const }} data-help="Load a predefined configuration">
+            <button
+              onClick={() => isConfig && setDropdownOpen((o) => !o)}
+              disabled={!isConfig}
+              style={{ ...styles.presetSelect, opacity: isConfig ? 1 : 0.4 }}
+            >
+              {presets.find((p) => p.id === selectedPresetId)?.name ?? 'Custom'} &#x25BE;
+            </button>
+            {dropdownOpen && (
+              <div style={styles.dropdownMenu}>
+                <div
+                  style={styles.dropdownItem}
+                  data-help="Manually configured parameters"
+                  onClick={() => { setSelectedPresetId(''); setDropdownOpen(false); }}
+                >
+                  Custom
+                </div>
+                {presets.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      ...styles.dropdownItem,
+                      ...(p.id === selectedPresetId ? styles.dropdownItemActive : {}),
+                    }}
+                    data-help={p.description}
+                    onClick={() => selectPreset(p.id)}
+                  >
+                    {p.name}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-
+        </div>
         {/* Population */}
         <div style={styles.statRow} data-help="Number of individuals created each generation. Use mousewheel or arrow keys to adjust.">
           <span style={styles.statLabel}>Population</span>
           <input
+            ref={popRef}
             type="number"
             min={50}
             max={50000}
@@ -123,6 +186,7 @@ export const ConfigPanel: React.FC<Props> = ({
           <span style={styles.statLabel}>Crossover</span>
           <span style={styles.inlineGroup}>
             [<input
+              ref={crossMinRef}
               type="number"
               min={1}
               max={6}
@@ -131,6 +195,7 @@ export const ConfigPanel: React.FC<Props> = ({
               disabled={!isConfig}
               style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
             />, <input
+              ref={crossMaxRef}
               type="number"
               min={1}
               max={6}
@@ -147,6 +212,7 @@ export const ConfigPanel: React.FC<Props> = ({
           <span style={styles.statLabel}>Mutation</span>
           <span style={styles.inlineGroup}>
             <input
+              ref={mutRef}
               type="number"
               min={0}
               max={100}
@@ -277,13 +343,6 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  presetDescription: {
-    fontSize: 9,
-    fontFamily: 'monospace',
-    color: '#7a7a9a',
-    fontStyle: 'italic' as const,
-    padding: '2px 0 4px 0',
-  },
   presetSelect: {
     padding: '2px 6px',
     fontSize: 9,
@@ -294,6 +353,28 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     cursor: 'pointer',
     flexShrink: 0,
+  },
+  dropdownMenu: {
+    position: 'absolute' as const,
+    top: '100%',
+    right: 0,
+    marginTop: 2,
+    backgroundColor: '#2a2a4a',
+    border: '1px solid #3a3a5a',
+    borderRadius: 3,
+    zIndex: 10,
+    minWidth: 120,
+  },
+  dropdownItem: {
+    padding: '4px 8px',
+    fontSize: 9,
+    fontFamily: 'monospace',
+    color: '#e0e0e0',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
+  dropdownItemActive: {
+    backgroundColor: '#3a3a5a',
   },
   section: {
     marginBottom: 10,

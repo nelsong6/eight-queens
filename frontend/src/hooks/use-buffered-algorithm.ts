@@ -174,7 +174,9 @@ export function useBufferedAlgorithm() {
     clock.onTick = (playhead) => {
       chartPlayheadRef.current = playhead;
       // Update maxPlayhead so clock knows how far it can go
-      clock.maxPlayhead = buffer.consumedCount + buffer.available;
+      // Use allSummariesRef (actual chart data) instead of buffer.consumedCount
+      // since manual steps bypass the buffer's consume tracking
+      clock.maxPlayhead = allSummariesRef.current.length + buffer.available;
       // Expose the next buffer entry's summary for chart lookahead interpolation
       lookaheadSummaryRef.current = buffer.peek(0)?.summary ?? null;
     };
@@ -184,7 +186,7 @@ export function useBufferedAlgorithm() {
     buffer.startProducing();
 
     // Set initial maxPlayhead
-    clock.maxPlayhead = buffer.consumedCount + buffer.available;
+    clock.maxPlayhead = allSummariesRef.current.length + buffer.available;
 
     clock.start();
     setRunning(true);
@@ -463,6 +465,7 @@ export function useBufferedAlgorithm() {
     step: stepOnce,
     stepN,
     reset,
+    resizePopulation,
     goBack,
     canGoBack,
     chartPlayheadRef,
