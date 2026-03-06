@@ -223,6 +223,7 @@ export const ConfigPanel: React.FC<Props> = ({
             />%
           </span>
         </div>
+
       </div>
 
       {/* Status */}

@@ -151,9 +151,9 @@ export const SpecimenPanel: React.FC<Props> = ({
             <ClickableIndividual ind={info.parentB} color="#c49df7" onClick={() => onSelectIndividual(info.parentB!, 'Parent B')} />
           ) : na}
         </Field>
-        <Field label="Crossover" width={50} help="The gene position where the parents' chromosomes were spliced to produce children">
+        <Field label="Crossover Position" width={50} help="The gene position where the parents' chromosomes were spliced to produce children">
           {info?.crossoverPoint !== null && info?.crossoverPoint !== undefined
-            ? <span style={styles.val}>pos {info.crossoverPoint}</span>
+            ? <span style={styles.val}>{info.crossoverPoint}</span>
             : na}
         </Field>
       </div>

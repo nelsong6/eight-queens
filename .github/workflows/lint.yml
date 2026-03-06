@@ -13,4 +13,4 @@ jobs:
   code-quality:
     uses: nelsong6/pipeline-templates/.github/workflows/lint-template.yml@main
     with:
-      working_directory: '.'
+      working_directory: './frontend'

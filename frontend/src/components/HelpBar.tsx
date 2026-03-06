@@ -6,6 +6,8 @@ export const HelpBar: React.FC = () => {
   const [text, setText] = useState(DEFAULT_TEXT);
   const [held, setHeld] = useState(false);
   const heldRef = useRef(false);
+  const lastMouseX = useRef(0);
+  const lastMouseY = useRef(0);
 
   useEffect(() => {
     const handleMouseOver = (e: MouseEvent) => {
@@ -14,19 +16,35 @@ export const HelpBar: React.FC = () => {
       setText(target ? (target as HTMLElement).dataset.help! : DEFAULT_TEXT);
     };
 
+    const helpTextFromPoint = (x: number, y: number): string => {
+      const el = document.elementFromPoint(x, y);
+      const target = (el as HTMLElement | null)?.closest?.('[data-help]');
+      return target ? (target as HTMLElement).dataset.help! : DEFAULT_TEXT;
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 's' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey
         && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         heldRef.current = !heldRef.current;
         setHeld(heldRef.current);
+        if (!heldRef.current) {
+          setText(helpTextFromPoint(lastMouseX.current, lastMouseY.current));
+        }
       }
     };
 
+    const handleMouseMove = (e: MouseEvent) => {
+      lastMouseX.current = e.clientX;
+      lastMouseY.current = e.clientY;
+    };
+
     document.addEventListener('mouseover', handleMouseOver);
+    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('mouseover', handleMouseOver);
+      document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, []);
