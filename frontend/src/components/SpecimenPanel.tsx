@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import type { Individual, GenerationBreedingData, PoolOrigin } from '../engine/types';
 import { formatCoordinate } from '../engine/time-coordinate';
+import { formatId } from '../engine/individual';
+import { colors } from '../colors';
 
 interface Props {
   individual: Individual | null;
@@ -41,14 +43,20 @@ export const SpecimenPanel: React.FC<Props> = ({
     let sibling: Individual | null = null;
 
     if (isChild) {
-      const pairIndex = Math.floor(individual.id / 2);
-      parentA = breedingData.aParents[pairIndex] ?? null;
-      parentB = breedingData.bParents[pairIndex] ?? null;
-      crossoverPoint = breedingData.crossoverPoints[pairIndex] ?? null;
-      const isChildA = individual.id % 2 === 0;
-      sibling = isChildA
-        ? breedingData.bChildren[pairIndex] ?? null
-        : breedingData.aChildren[pairIndex] ?? null;
+      let pairIndex = breedingData.aChildren.findIndex(c => c.id === individual.id);
+      let isChildA = true;
+      if (pairIndex === -1) {
+        pairIndex = breedingData.bChildren.findIndex(c => c.id === individual.id);
+        isChildA = false;
+      }
+      if (pairIndex >= 0) {
+        parentA = breedingData.aParents[pairIndex] ?? null;
+        parentB = breedingData.bParents[pairIndex] ?? null;
+        crossoverPoint = breedingData.crossoverPoints[pairIndex] ?? null;
+        sibling = isChildA
+          ? breedingData.bChildren[pairIndex] ?? null
+          : breedingData.aChildren[pairIndex] ?? null;
+      }
     }
 
     const isActualParent = breedingData.actualParents.some(p => p.id === individual.id);
@@ -104,7 +112,7 @@ export const SpecimenPanel: React.FC<Props> = ({
     <div style={styles.panel} data-help="Specimen inspector - click any individual in the population lists to see its details, lineage, and breeding history">
       <h3 style={styles.title}>Specimen</h3>
       <Field label="ID" help="Unique ID of this individual within the population">
-        {individual ? <span style={styles.id}>#{individual.id}</span> : na}
+        {individual ? <span style={styles.id}>#{formatId(individual)}</span> : na}
       </Field>
       <Field label="Sample collection date" help="The pipeline position where this individual was clicked — format: x.y.t (generation.operation.phase)">
         {viewedOrigin ? (
@@ -130,16 +138,10 @@ export const SpecimenPanel: React.FC<Props> = ({
             </span>
           : na}
       </Field>
-      <Field label="Role" help="This individual's role in the current generation: Child (offspring of breeding), Parent (selected to breed), or Eligible parent (qualified but not selected)">
-        {info ? (
+      <Field label="Age" help="This individual's age value: 0 = chromosome, 1 = child, 2 = adult, 3 = elder">
+        {individual ? (
           <span style={styles.val}>
-            {info.isChild
-              ? 'Child'
-              : info.isActualParent
-                ? 'Parent'
-                : info.isEligibleParent
-                  ? 'Eligible parent'
-                  : '-'}
+            {individual.age}
           </span>
         ) : na}
       </Field>
@@ -147,25 +149,23 @@ export const SpecimenPanel: React.FC<Props> = ({
         <span style={styles.checkbox}>{isBest ? '☑' : '☐'}</span>
       </Field>
       <Field label="Solution" help="Whether this individual has achieved the maximum fitness of 28 (all queens non-attacking)">
-        <span style={{ ...styles.checkbox, ...(isSolution ? { color: '#4caf50' } : {}) }}>{isSolution ? '☑' : '☐'}</span>
+        <span style={{ ...styles.checkbox, ...(isSolution ? { color: colors.accent.green } : {}) }}>{isSolution ? '☑' : '☐'}</span>
       </Field>
       <Field label="Mutated" help="Whether a random gene was changed after crossover, and which gene was affected">
         {info?.mutationRecord ? (
           <span style={styles.mutation}>
-            gene {info.mutationRecord.geneIndex}: {info.mutationRecord.oldValue} -&gt; {info.mutationRecord.newValue}
+            <span style={{ color: colors.accent.green }}>☑</span> gene {info.mutationRecord.geneIndex}: {info.mutationRecord.oldValue} -&gt; {info.mutationRecord.newValue}
           </span>
         ) : (
-          <span style={styles.val}>{individual ? 'No' : '-'}</span>
+          <span style={styles.checkbox}>{individual ? '☐' : '-'}</span>
         )}
       </Field>
-      <Field label="Parent A" help="First parent used in the crossover that produced this child - click to inspect">
-        {info?.parentA ? (
-          <ClickableIndividual ind={info.parentA} color="#6bc5f7" onClick={() => onSelectIndividual(info.parentA!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'A' })} />
-        ) : na}
-      </Field>
-      <Field label="Parent B" help="Second parent used in the crossover that produced this child - click to inspect">
-        {info?.parentB ? (
-          <ClickableIndividual ind={info.parentB} color="#c49df7" onClick={() => onSelectIndividual(info.parentB!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'B' })} />
+      <Field label="Parents" help="The two parents used in the crossover that produced this child - click to inspect">
+        {info?.parentA || info?.parentB ? (
+          <span style={{ display: 'flex', gap: 6 }}>
+            {info?.parentA && <ClickableIndividual ind={info.parentA} color={colors.parent.a} onClick={() => onSelectIndividual(info.parentA!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'A' })} />}
+            {info?.parentB && <ClickableIndividual ind={info.parentB} color={colors.parent.b} onClick={() => onSelectIndividual(info.parentB!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'B' })} />}
+          </span>
         ) : na}
       </Field>
       <Field label="Crossover" help="The gene position where the parents' chromosomes were spliced to produce children">
@@ -175,27 +175,25 @@ export const SpecimenPanel: React.FC<Props> = ({
       </Field>
       <Field label="Sibling" help="The other child produced from the same crossover - click to inspect">
         {info?.sibling ? (
-          <ClickableIndividual ind={info.sibling} color="#8a8" onClick={() => onSelectIndividual(info.sibling!, { coordinate: { generation, operation: 7, boundary: 1 }, pool: 'finalChildren' })} />
+          <ClickableIndividual ind={info.sibling} color={colors.accent.green} onClick={() => onSelectIndividual(info.sibling!, { coordinate: { generation, operation: 7, boundary: 1 }, pool: 'finalChildren' })} />
         ) : na}
       </Field>
-      <Field label="Matings" help="How many times this individual was selected as a parent this generation, and with how many unique partners">
-        {info?.matings.length
-          ? <span style={styles.val}>{info.matings.length}x ({info.uniquePartnerCount} partner{info.uniquePartnerCount !== 1 ? 's' : ''})</span>
-          : na}
-      </Field>
-      <Field label="Mating" help="Browse through each mating event for this parent">
+      <Field label="Mating" help="How many times this individual was selected as a parent — browse each mating event">
         {info && info.matings.length > 0 ? (
-          <select
-            style={styles.select}
-            value={matingIndex}
-            onChange={(e) => setMatingIndex(Number(e.target.value))}
-          >
-            {info.matings.map((m, i) => (
-              <option key={i} value={i}>
-                #{i + 1} w/ #{m.partner.id} (f:{m.partner.fitness})
-              </option>
-            ))}
-          </select>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <select
+              style={styles.select}
+              value={matingIndex}
+              onChange={(e) => setMatingIndex(Number(e.target.value))}
+            >
+              {info.matings.map((m, i) => (
+                <option key={i} value={i}>
+                  #{i + 1} w/ #{formatId(m.partner)} (f:{m.partner.fitness})
+                </option>
+              ))}
+            </select>
+            <span style={{ ...styles.val, fontSize: 10 }}>of {info.matings.length}</span>
+          </span>
         ) : na}
       </Field>
       <Field label="Children" help="The two offspring produced by the selected mating event - select to inspect">
@@ -209,9 +207,9 @@ export const SpecimenPanel: React.FC<Props> = ({
               e.target.value = '';
             }}
           >
-            <option value="" disabled>#{selectedMating.childA.id} (f:{selectedMating.childA.fitness}), #{selectedMating.childB.id} (f:{selectedMating.childB.fitness})</option>
-            <option value="a">#{selectedMating.childA.id} (f:{selectedMating.childA.fitness})</option>
-            <option value="b">#{selectedMating.childB.id} (f:{selectedMating.childB.fitness})</option>
+            <option value="" disabled>#{formatId(selectedMating.childA)} (f:{selectedMating.childA.fitness}), #{formatId(selectedMating.childB)} (f:{selectedMating.childB.fitness})</option>
+            <option value="a">#{formatId(selectedMating.childA)} (f:{selectedMating.childA.fitness})</option>
+            <option value="b">#{formatId(selectedMating.childB)} (f:{selectedMating.childB.fitness})</option>
           </select>
         ) : na}
       </Field>
@@ -238,19 +236,19 @@ const ClickableIndividual: React.FC<{
   <span
     style={{ ...styles.clickable, borderColor: color }}
     onClick={onClick}
-    title={`#${ind.id} [${ind.solution.join(',')}] f:${ind.fitness}`}
+    title={`#${formatId(ind)} [${ind.solution.join(',')}] f:${ind.fitness}`}
   >
-    <span style={{ color }}>#{ind.id}</span>
+    <span style={{ color }}>#{formatId(ind)}</span>
     <span style={styles.chipFit}>f:{ind.fitness}</span>
   </span>
 );
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: colors.bg.surface,
     borderRadius: 8,
     padding: 16,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     fontFamily: 'monospace',
     fontSize: 11,
     marginTop: 12,
@@ -259,7 +257,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 12px 0',
     fontSize: 14,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
@@ -272,7 +270,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fieldLabel: {
     fontSize: 11,
-    color: '#888',
+    color: colors.text.tertiary,
     flexShrink: 0,
   },
   fieldValue: {
@@ -281,37 +279,37 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#e0e0e0',
+    color: colors.text.primary,
   },
   na: {
-    color: '#444',
+    color: colors.text.disabled,
     fontSize: 11,
   },
   id: {
-    color: '#ffd700',
+    color: colors.accent.gold,
     fontWeight: 'bold',
   },
   fitness: {
-    color: '#ffd700',
+    color: colors.accent.gold,
   },
   val: {
-    color: '#ccc',
+    color: colors.text.secondary,
   },
   mutation: {
-    color: '#ff6b6b',
+    color: colors.accent.red,
   },
   coordinate: {
-    color: '#6c5ce7',
+    color: colors.accent.purple,
     fontWeight: 'bold',
     fontSize: 11,
   },
   poolLabel: {
-    color: '#999',
+    color: colors.text.tertiary,
     fontSize: 10,
   },
   checkbox: {
     fontSize: 13,
-    color: '#888',
+    color: colors.text.tertiary,
     userSelect: 'none' as const,
   },
   clickable: {
@@ -322,11 +320,11 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid',
     borderRadius: 3,
     cursor: 'pointer',
-    backgroundColor: '#12122a',
+    backgroundColor: colors.bg.raised,
     fontSize: 11,
   },
   chipFit: {
-    color: '#ffd700',
+    color: colors.accent.gold,
     fontSize: 10,
   },
   chipRow: {
@@ -338,9 +336,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '1px 4px',
     fontSize: 10,
     fontFamily: 'monospace',
-    backgroundColor: '#12122a',
-    color: '#ccc',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.raised,
+    color: colors.text.secondary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     cursor: 'pointer',
     maxWidth: 160,

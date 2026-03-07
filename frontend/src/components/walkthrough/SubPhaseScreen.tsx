@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type { Individual, Age, GenerationResult, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
-import { getOp, getPoolsAtCoordinate, poolDisplayName, getTransformDescription, GENERATION_OPS, OPS_PER_GENERATION, SCREENS_PER_OP } from '../../engine/time-coordinate';
+import { getOp, poolDisplayName, getTransformDescription, getPipelineState, resolvePoolFromPipeline, GENERATION_OPS, OPS_PER_GENERATION, SCREENS_PER_OP } from '../../engine/time-coordinate';
 import {
   createColumnHelper,
   useReactTable,
@@ -12,18 +12,20 @@ import {
   type ColumnFiltersState,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { formatId } from '../../engine/individual';
+import { colors } from '../../colors';
 
-const AGE_COLORS: Record<Age, string> = { 0: '#888', 1: '#3498db', 2: '#2ecc71', 3: '#e67e22' };
+const AGE_COLORS: Record<Age, string> = { 0: colors.age.chromosome, 1: colors.age.child, 2: colors.age.adult, 3: colors.age.elder };
 
 // Grid cell widths matching BreedingListboxes
-const COL_ID = '36px';
-const COL_GENE = '22px';
-const COL_FIT = '24px';
-const COL_AGE = '24px';
-const ITEM_HEIGHT = 22;
+const COL_ID = '48px';
+const COL_GENE = '28px';
+const COL_FIT = '30px';
+const COL_AGE = '30px';
+const ITEM_HEIGHT = 28;
 
 const CELL: React.CSSProperties = {
-  borderRight: '1px solid #232346',
+  borderRight: `1px solid ${colors.border.subtle}`,
   padding: '0 3px',
 };
 
@@ -32,9 +34,8 @@ const GRID_COLS = `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT} ${COL_AGE}`;
 interface Props {
   coordinate: TimeCoordinate;
   result: GenerationResult;
-  previousResult: GenerationResult | null;
   onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
-  /** For crossover pair browsing (op 5) */
+  /** For crossover pair browsing (op 4) */
   browsePairIndex: number;
   onPairChange: (index: number) => void;
   /** Navigate to a specific operation/boundary within the current generation */
@@ -42,12 +43,12 @@ interface Props {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Aging: '#e67e22',
-  Pruning: '#e74c3c',
-  Selection: '#3498db',
-  Crossover: '#9b59b6',
-  Mutation: '#2ecc71',
-  Birth: '#1abc9c',
+  Aging: colors.category.aging,
+  Pruning: colors.category.pruning,
+  Selection: colors.category.selection,
+  Crossover: colors.category.crossover,
+  Mutation: colors.category.mutation,
+  Birth: colors.category.birth,
 };
 
 const BOUNDARY_LABELS = ['Before', 'Transform', 'After'] as const;
@@ -68,9 +69,9 @@ export const PipelineProgress: React.FC<{ coordinate: TimeCoordinate; onNavigate
         </div>
       )}
       {/* Main pipeline bar — 24 segments (3 per operation), grouped by category */}
-      <div style={progressStyles.bar}>
+      <div key={coordinate.generation} style={progressStyles.bar}>
         {GENERATION_OPS.map((op, opIdx) => {
-          const color = CATEGORY_COLORS[op.category] ?? '#555';
+          const color = CATEGORY_COLORS[op.category] ?? colors.text.disabled;
           return (
             <div key={opIdx} style={progressStyles.opGroup}>
               {([0, 1, 2] as const).map((bIdx) => {
@@ -85,8 +86,8 @@ export const PipelineProgress: React.FC<{ coordinate: TimeCoordinate; onNavigate
                     style={{
                       ...progressStyles.segment,
                       flex: 1,
-                      backgroundColor: isCurrent ? color : isPast ? color + '55' : '#1a1a35',
-                      borderRight: bIdx < 2 ? `1px solid ${isPast || isCurrent ? color + '33' : '#0e0e1a'}` : 'none',
+                      backgroundColor: isCurrent ? color : isPast ? color + '55' : colors.bg.raised,
+                      borderRight: bIdx < 2 ? `1px solid ${isPast || isCurrent ? color + '33' : colors.bg.base}` : 'none',
                       boxShadow: isCurrent ? `0 0 6px ${color}88` : 'none',
                       cursor: onNavigate ? 'pointer' : undefined,
                     }}
@@ -108,7 +109,7 @@ export const PipelineProgress: React.FC<{ coordinate: TimeCoordinate; onNavigate
                 onClick={() => onNavigate?.(opIdx, 0)}
                 style={{
                   ...progressStyles.label,
-                  color: isActive ? (CATEGORY_COLORS[op.category] ?? '#aaa') : '#444',
+                  color: isActive ? (CATEGORY_COLORS[op.category] ?? colors.text.secondary) : colors.text.disabled,
                   fontWeight: isActive ? 'bold' : 'normal',
                   cursor: onNavigate ? 'pointer' : undefined,
                 }}
@@ -121,26 +122,26 @@ export const PipelineProgress: React.FC<{ coordinate: TimeCoordinate; onNavigate
       )}
 
       {/* Sub-bar: 3 boundary phases for the current operation */}
-      <div style={compact ? progressStyles.compactSubBar : progressStyles.subBar}>
+      <div key={`${coordinate.generation}.${coordinate.operation}`} style={compact ? progressStyles.compactSubBar : progressStyles.subBar}>
         {BOUNDARY_LABELS.map((label, idx) => {
           const isCurrent = coordinate.boundary === idx;
           const isPast = coordinate.boundary > idx;
-          const activeColor = CATEGORY_COLORS[GENERATION_OPS[coordinate.operation]!.category] ?? '#555';
+          const activeColor = CATEGORY_COLORS[GENERATION_OPS[coordinate.operation]!.category] ?? colors.text.disabled;
           return (
             <div
               key={idx}
               onClick={() => onNavigate?.(coordinate.operation, idx as 0 | 1 | 2)}
               style={{
                 ...progressStyles.subSegment,
-                backgroundColor: isCurrent ? activeColor : isPast ? activeColor + '44' : '#1a1a35',
-                borderRight: idx < 2 ? '1px solid #0e0e1a' : 'none',
+                backgroundColor: isCurrent ? activeColor : isPast ? activeColor + '44' : colors.bg.raised,
+                borderRight: idx < 2 ? `1px solid ${colors.bg.base}` : 'none',
                 boxShadow: isCurrent ? `0 0 4px ${activeColor}88` : 'none',
                 cursor: onNavigate ? 'pointer' : undefined,
               }}
             >
               <span style={{
                 ...progressStyles.subLabel,
-                color: isCurrent ? '#fff' : isPast ? '#888' : '#444',
+                color: isCurrent ? '#fff' : isPast ? colors.text.secondary : colors.text.disabled,
               }}>
                 {label}
               </span>
@@ -152,35 +153,6 @@ export const PipelineProgress: React.FC<{ coordinate: TimeCoordinate; onNavigate
   );
 };
 
-/** Resolve a pool name to actual individuals from the generation result. */
-function resolvePool(pool: PoolName, result: GenerationResult, previousResult: GenerationResult | null): Individual[] {
-  const bd = result.breedingData;
-  switch (pool) {
-    case 'oldParents':
-      // All adults from previous generation (both mated and unselected, carried over for aging)
-      return previousResult ? previousResult.breedingData.eligibleParents : [];
-    case 'previousChildren':
-      // Children from previous generation (arriving for promotion)
-      return previousResult ? previousResult.breedingData.allChildren : [];
-    case 'eligibleAdults':
-      return bd.eligibleParents;
-    case 'retiredParents':
-      // Same as oldParents — these are the ones being removed
-      return previousResult ? previousResult.breedingData.eligibleParents : [];
-    case 'selectedPairs':
-      return bd.actualParents;
-    case 'unselected': {
-      const selectedIds = new Set(bd.actualParents.map(p => p.id));
-      return bd.eligibleParents.filter(p => !selectedIds.has(p.id));
-    }
-    case 'matedParents':
-      return bd.actualParents;
-    case 'chromosomes':
-      return bd.allChildren;
-    case 'finalChildren':
-      return bd.allChildren;
-  }
-}
 
 /** Describes before→after pool transitions for each operation. */
 const OP_POOL_TRANSITIONS: Record<number, { from: string[]; to: string[]; arrow: string }> = {
@@ -197,21 +169,20 @@ const OP_POOL_TRANSITIONS: Record<number, { from: string[]; to: string[]; arrow:
 const TransformView: React.FC<{
   coordinate: TimeCoordinate;
   result: GenerationResult;
-  previousResult: GenerationResult | null;
-}> = ({ coordinate, result, previousResult }) => {
+}> = ({ coordinate, result }) => {
   const desc = getTransformDescription(coordinate.operation);
   const transition = OP_POOL_TRANSITIONS[coordinate.operation]!;
   const op = getOp(coordinate.operation);
 
-  // Compute counts for before/after pools
-  const beforePools = getPoolsAtCoordinate({ ...coordinate, boundary: 0 });
-  const afterPools = getPoolsAtCoordinate({ ...coordinate, boundary: 2 });
-  const beforeCount = beforePools.reduce((sum, p) => sum + resolvePool(p, result, previousResult).length, 0);
-  const afterCount = afterPools.reduce((sum, p) => sum + resolvePool(p, result, previousResult).length, 0);
+  // Compute counts for before/after pools using the pipeline
+  const beforeSnap = getPipelineState(result.pipeline, coordinate.operation, 0);
+  const afterSnap = getPipelineState(result.pipeline, coordinate.operation, 2);
+  const beforeCount = Object.values(beforeSnap).reduce((sum, arr) => sum + (arr?.length ?? 0), 0);
+  const afterCount = Object.values(afterSnap).reduce((sum, arr) => sum + (arr?.length ?? 0), 0);
 
   const delta = afterCount - beforeCount;
   const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '0';
-  const deltaColor = delta > 0 ? '#2ecc71' : delta < 0 ? '#e74c3c' : '#888';
+  const deltaColor = delta > 0 ? colors.accent.green : delta < 0 ? colors.accent.red : colors.text.secondary;
 
   return (
     <div style={transformStyles.container}>
@@ -263,7 +234,7 @@ const columnHelper = createColumnHelper<Individual>();
 const columns = [
   columnHelper.accessor('id', {
     header: '#',
-    size: 36,
+    size: 48,
     enableSorting: true,
     enableColumnFilter: false,
   }),
@@ -271,20 +242,20 @@ const columns = [
     columnHelper.accessor(row => row.solution[i], {
       id: `gene${i}`,
       header: () => i === 0 ? '\uD83E\uDDEC' : '',
-      size: 22,
+      size: 28,
       enableSorting: i === 0,
       enableColumnFilter: false,
     })
   ),
   columnHelper.accessor('fitness', {
     header: '\uD83C\uDFC5',
-    size: 24,
+    size: 30,
     enableSorting: true,
     enableColumnFilter: false,
   }),
   columnHelper.accessor('age', {
     header: '\uD83D\uDC23',
-    size: 24,
+    size: 30,
     enableSorting: true,
     enableColumnFilter: true,
     filterFn: 'equals',
@@ -325,9 +296,12 @@ const IndividualList: React.FC<{
   });
 
   const idWidth = useMemo(() => {
-    let maxId = 0;
-    for (const ind of individuals) if (ind.id > maxId) maxId = ind.id;
-    return Math.max(3, String(maxId).length);
+    let maxLen = 3;
+    for (const ind of individuals) {
+      const len = formatId(ind).length;
+      if (len > maxLen) maxLen = len;
+    }
+    return maxLen;
   }, [individuals]);
 
   if (individuals.length === 0) {
@@ -352,7 +326,7 @@ const IndividualList: React.FC<{
           style={{
             ...gridStyles.headerCell,
             cursor: 'pointer',
-            borderBottom: idSorted ? '2px solid #888' : '2px solid transparent',
+            borderBottom: idSorted ? `2px solid ${colors.text.secondary}` : '2px solid transparent',
           }}
         >#</span>
         <span
@@ -362,7 +336,7 @@ const IndividualList: React.FC<{
             gridColumn: '2',
             ...gridStyles.headerCell,
             cursor: 'pointer',
-            borderBottom: gene0Sorted ? '2px solid #888' : '2px solid transparent',
+            borderBottom: gene0Sorted ? `2px solid ${colors.text.secondary}` : '2px solid transparent',
           }}
         >{'\uD83E\uDDEC'}</span>
         <span
@@ -372,7 +346,7 @@ const IndividualList: React.FC<{
             gridColumn: '10',
             ...gridStyles.headerCell,
             cursor: 'pointer',
-            borderBottom: fitnessSorted ? '2px solid #ffd700' : '2px solid transparent',
+            borderBottom: fitnessSorted ? `2px solid ${colors.accent.gold}` : '2px solid transparent',
           }}
         >{'\uD83C\uDFC5'}</span>
         <span
@@ -382,7 +356,7 @@ const IndividualList: React.FC<{
             gridColumn: '11',
             ...gridStyles.headerCell,
             cursor: 'pointer',
-            borderBottom: ageSorted ? '2px solid #e67e22' : '2px solid transparent',
+            borderBottom: ageSorted ? `2px solid ${colors.accent.orange}` : '2px solid transparent',
           }}
         >{'\uD83D\uDC23'}</span>
       </div>
@@ -400,11 +374,11 @@ const IndividualList: React.FC<{
                   position: 'absolute' as const,
                   top: virtualRow.start,
                   width: '100%',
-                  backgroundColor: virtualRow.index % 2 === 1 ? '#16162e' : 'transparent',
+                  backgroundColor: virtualRow.index % 2 === 1 ? colors.interactive.rowStripe : 'transparent',
                 }}
                 onClick={() => onClickItem(ind)}
               >
-                <span style={gridStyles.id}>{String(ind.id).padStart(idWidth)}</span>
+                <span style={gridStyles.id}>{formatId(ind).padStart(idWidth)}</span>
                 {ind.solution.map((gene, gi) => (
                   <span key={gi} style={gridStyles.gene}>{gene}</span>
                 ))}
@@ -427,14 +401,15 @@ type PoolFilter = PoolName | 'all' | 'removed' | 'survived';
 export const SubPhaseScreen: React.FC<Props> = ({
   coordinate,
   result,
-  previousResult,
   onSelectIndividual,
   browsePairIndex,
   onPairChange,
   onNavigate,
 }) => {
   const op = getOp(coordinate.operation);
-  const pools = getPoolsAtCoordinate(coordinate);
+  const pools = Object.keys(
+    getPipelineState(result.pipeline, coordinate.operation, coordinate.boundary)
+  ) as PoolName[];
   const [poolFilter, setPoolFilter] = useState<PoolFilter>(() => pools.length > 1 ? 'all' : (pools[0] ?? 'all'));
   const [sorting, setSorting] = useState<SortingState>([{ id: 'fitness', desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -442,9 +417,9 @@ export const SubPhaseScreen: React.FC<Props> = ({
   const poolData = useMemo(() => {
     return pools.map(poolName => ({
       name: poolName,
-      individuals: resolvePool(poolName, result, previousResult),
+      individuals: resolvePoolFromPipeline(poolName, result.pipeline, coordinate.operation, coordinate.boundary),
     }));
-  }, [pools, result, previousResult]);
+  }, [pools, result, coordinate]);
 
   // Reset filters when pools change (new coordinate)
   const poolKey = pools.join(',');
@@ -471,19 +446,17 @@ export const SubPhaseScreen: React.FC<Props> = ({
 
   // Compute removed/survived by comparing before vs after pools
   const { removedIds, survivedIds, hasTransformDiff, removedCount, survivedCount } = useMemo(() => {
-    const beforePools = getPoolsAtCoordinate({ ...coordinate, boundary: 0 });
-    const afterPools = getPoolsAtCoordinate({ ...coordinate, boundary: 2 });
-
-    const collectIds = (poolNames: PoolName[]) => {
+    const collectIds = (boundary: 0 | 1 | 2) => {
+      const snap = getPipelineState(result.pipeline, coordinate.operation, boundary);
       const ids = new Set<number>();
-      for (const p of poolNames) {
-        for (const ind of resolvePool(p, result, previousResult)) ids.add(ind.id);
+      for (const arr of Object.values(snap)) {
+        for (const ind of (arr ?? [])) ids.add(ind.id);
       }
       return ids;
     };
 
-    const beforeIds = collectIds(beforePools);
-    const afterIds = collectIds(afterPools);
+    const beforeIds = collectIds(0);
+    const afterIds = collectIds(2);
 
     const removed = new Set<number>();
     const survived = new Set<number>();
@@ -499,7 +472,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
       removedCount: removed.size,
       survivedCount: survived.size,
     };
-  }, [coordinate, result, previousResult]);
+  }, [coordinate, result]);
 
   // Resolve the displayed individuals based on pool filter
   const displayedIndividuals = useMemo(() => {
@@ -546,15 +519,6 @@ export const SubPhaseScreen: React.FC<Props> = ({
 
   // Age filter: toggle an age value in columnFilters
   const activeAgeFilter = columnFilters.find(f => f.id === 'age')?.value as Age | undefined;
-  const toggleAgeFilter = (age: Age) => {
-    setColumnFilters(prev => {
-      const existing = prev.find(f => f.id === 'age');
-      if (existing && existing.value === age) {
-        return prev.filter(f => f.id !== 'age');
-      }
-      return [...prev.filter(f => f.id !== 'age'), { id: 'age', value: age }];
-    });
-  };
 
   const isCrossoverAdd = coordinate.operation === 4 && coordinate.boundary === 2;
   const totalPairs = result.breedingData.aParents.length;
@@ -563,51 +527,50 @@ export const SubPhaseScreen: React.FC<Props> = ({
 
   return (
     <div style={styles.panel}>
-      <style>{'.vl-row:not(.vl-selected):hover { background-color: #24244a !important; }'}</style>
+      <style>{`.vl-row:not(.vl-selected):hover { background-color: ${colors.interactive.hover} !important; }`}</style>
       <h3 style={styles.panelTitle} data-help="Population data at each step of the genetic algorithm pipeline">Population</h3>
       <PipelineProgress coordinate={coordinate} onNavigate={onNavigate} />
       <div style={styles.header}>
         <span style={styles.opCategory}>{op.category}</span>
       </div>
 
-      {coordinate.boundary === 1 && <TransformView coordinate={coordinate} result={result} previousResult={previousResult} />}
+      {coordinate.boundary === 1 && <TransformView coordinate={coordinate} result={result} />}
 
-      {/* Pool filter chips */}
-      {showLists && poolChips.length > 1 && (
-        <div style={styles.tabRow}>
-          {poolChips.map(chip => (
-            <div
-              key={chip.value}
-              onClick={() => { setPoolFilter(chip.value); setColumnFilters([]); }}
-              style={{
-                ...styles.tab,
-                ...(poolFilter === chip.value ? styles.tabActive : {}),
-              }}
-            >
-              {chip.label}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Age filter chips — always render row to prevent layout shift */}
+      {/* Pool & age filter dropdowns */}
       {showLists && (
-        <div style={{ ...styles.tabRow, minHeight: 26 }}>
-          {([0, 1, 2, 3] as Age[]).filter(age => ageFacets.has(age)).map(age => (
-            <div
-              key={age}
-              data-help={`Filter to age ${age} individuals`}
-              onClick={() => toggleAgeFilter(age)}
-              style={{
-                ...styles.tab,
-                ...(activeAgeFilter === age ? styles.tabActive : {}),
-                color: activeAgeFilter === age ? AGE_COLORS[age] : undefined,
-                borderColor: activeAgeFilter === age ? AGE_COLORS[age] + '88' : undefined,
-              }}
+        <div style={styles.filterRow}>
+          {poolChips.length > 1 && (
+            <select
+              data-help="Filter by pool"
+              value={poolFilter}
+              onChange={e => { setPoolFilter(e.target.value as PoolFilter); setColumnFilters([]); }}
+              style={styles.filterSelect}
             >
-              Age {age} ({ageFacets.get(age)})
-            </div>
-          ))}
+              {poolChips.map(chip => (
+                <option key={chip.value} value={chip.value}>{chip.label}</option>
+              ))}
+            </select>
+          )}
+          {ageFacets.size > 0 && (
+            <select
+              data-help="Filter by age"
+              value={activeAgeFilter ?? ''}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '') {
+                  setColumnFilters(prev => prev.filter(f => f.id !== 'age'));
+                } else {
+                  setColumnFilters(prev => [...prev.filter(f => f.id !== 'age'), { id: 'age', value: Number(val) }]);
+                }
+              }}
+              style={styles.filterSelect}
+            >
+              <option value="">All ages</option>
+              {([0, 1, 2, 3] as Age[]).filter(age => ageFacets.has(age)).map(age => (
+                <option key={age} value={age}>Age {age} ({ageFacets.get(age)})</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -664,15 +627,15 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 12px 0',
     fontSize: 14,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
   panel: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: colors.bg.surface,
     borderRadius: 8,
     padding: 16,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     flex: '1 1 300px',
     fontFamily: 'monospace',
     fontSize: 11,
@@ -685,33 +648,29 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
     fontSize: 14,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
   opCategory: {
   },
-  tabRow: {
+  filterRow: {
     display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: 4,
+    gap: 8,
     marginBottom: 10,
   },
-  tab: {
+  filterSelect: {
     fontSize: 10,
     fontFamily: 'monospace',
-    padding: '4px 8px',
-    backgroundColor: '#12122a',
-    color: '#666',
-    border: '1px solid #2a2a4a',
+    padding: '4px 6px',
+    backgroundColor: colors.bg.raised,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.subtle}`,
     borderRadius: 4,
     cursor: 'pointer',
-    transition: 'all 0.15s',
-  },
-  tabActive: {
-    backgroundColor: '#1a1a3e',
-    color: '#e0e0e0',
-    borderColor: '#4a4a7a',
+    outline: 'none',
+    flex: '0 1 auto',
+    minWidth: 0,
   },
   pairNav: {
     display: 'flex',
@@ -724,35 +683,35 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '3px 8px',
     fontSize: 10,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     cursor: 'pointer',
   },
   pairLabel: {
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#888',
+    color: colors.text.secondary,
   },
   poolSection: {
     marginBottom: 12,
   },
   emptyPool: {
-    color: '#555',
+    color: colors.text.disabled,
     fontSize: 10,
     fontStyle: 'italic' as const,
     padding: '4px 8px',
   },
   filterCount: {
-    color: '#666',
+    color: colors.text.tertiary,
     fontSize: 9,
     padding: '4px 6px',
     textAlign: 'center' as const,
     fontFamily: 'monospace',
   },
   noOp: {
-    color: '#555',
+    color: colors.text.disabled,
     fontSize: 11,
     textAlign: 'center' as const,
     padding: 20,
@@ -769,26 +728,26 @@ const gridStyles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: GRID_COLS,
     columnGap: 0,
     padding: '2px 6px',
-    fontSize: 10,
+    fontSize: 13,
     fontFamily: 'monospace',
-    backgroundColor: '#1a1a35',
+    backgroundColor: colors.bg.raised,
     borderRadius: '4px 4px 0 0',
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     borderBottom: 'none',
   },
   headerCell: {
     padding: '0 3px',
     textAlign: 'center' as const,
-    color: '#555',
+    color: colors.text.disabled,
     borderBottom: '2px solid transparent',
   },
   scrollContainer: {
     height: 300,
     overflowY: 'auto' as const,
     overflowX: 'hidden' as const,
-    backgroundColor: '#12122a',
+    backgroundColor: colors.bg.raised,
     borderRadius: '0 0 4px 4px',
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
   },
   row: {
     display: 'grid',
@@ -798,15 +757,15 @@ const gridStyles: Record<string, React.CSSProperties> = {
     lineHeight: `${ITEM_HEIGHT}px`,
     paddingLeft: 6,
     paddingRight: 6,
-    fontSize: 11,
+    fontSize: 14,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     cursor: 'pointer',
   },
-  id: { ...CELL, color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
-  gene: { ...CELL, color: '#e0e0e0', textAlign: 'center' as const },
-  fitness: { ...CELL, color: '#ffd700', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
-  age: { ...CELL, color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'center' as const, fontSize: 10, borderRight: 'none' },
+  id: { ...CELL, color: colors.text.secondary, whiteSpace: 'nowrap' as const, textAlign: 'center' as const },
+  gene: { ...CELL, color: colors.text.primary, textAlign: 'center' as const },
+  fitness: { ...CELL, color: colors.accent.gold, whiteSpace: 'nowrap' as const, textAlign: 'center' as const },
+  age: { ...CELL, color: colors.text.secondary, whiteSpace: 'nowrap' as const, textAlign: 'center' as const, fontSize: 13, borderRight: 'none' },
 };
 
 const transformStyles: Record<string, React.CSSProperties> = {
@@ -816,12 +775,12 @@ const transformStyles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     marginBottom: 4,
   },
   description: {
     fontSize: 11,
-    color: '#aaa',
+    color: colors.text.secondary,
     marginBottom: 16,
   },
   flow: {
@@ -840,7 +799,7 @@ const transformStyles: Record<string, React.CSSProperties> = {
   },
   columnLabel: {
     fontSize: 9,
-    color: '#666',
+    color: colors.text.tertiary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     marginBottom: 2,
@@ -848,9 +807,9 @@ const transformStyles: Record<string, React.CSSProperties> = {
   poolBox: {
     padding: '4px 8px',
     borderRadius: 4,
-    backgroundColor: '#1a1a3e',
-    border: '1px solid #3a3a5a',
-    color: '#ccc',
+    backgroundColor: colors.bg.surface,
+    border: `1px solid ${colors.border.strong}`,
+    color: colors.text.secondary,
     fontSize: 10,
     textAlign: 'center' as const,
     width: '100%',
@@ -858,7 +817,7 @@ const transformStyles: Record<string, React.CSSProperties> = {
   },
   countLabel: {
     fontSize: 9,
-    color: '#666',
+    color: colors.text.tertiary,
     marginTop: 2,
   },
   arrowColumn: {
@@ -877,7 +836,7 @@ const transformStyles: Record<string, React.CSSProperties> = {
     fontSize: 9,
     fontWeight: 'bold',
     textTransform: 'uppercase' as const,
-    color: '#ccc',
+    color: colors.text.secondary,
   },
   arrowLine: {
     display: 'flex',
@@ -886,13 +845,13 @@ const transformStyles: Record<string, React.CSSProperties> = {
   },
   arrowText: {
     fontSize: 9,
-    color: '#888',
+    color: colors.text.secondary,
     textAlign: 'center' as const,
     maxWidth: 120,
   },
   arrowHead: {
     fontSize: 16,
-    color: '#6c5ce7',
+    color: colors.accent.purple,
   },
   deltaLabel: {
     fontSize: 9,
@@ -900,12 +859,12 @@ const transformStyles: Record<string, React.CSSProperties> = {
   },
   detail: {
     fontSize: 10,
-    color: '#777',
+    color: colors.text.tertiary,
     lineHeight: '1.5',
     padding: '8px 10px',
-    backgroundColor: '#12122a',
+    backgroundColor: colors.bg.raised,
     borderRadius: 4,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     whiteSpace: 'pre-line' as const,
   },
 };
@@ -931,15 +890,15 @@ const progressStyles: Record<string, React.CSSProperties> = {
   stepCurrent: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#e0e0e0',
+    color: colors.text.primary,
   },
   stepSlash: {
     fontSize: 10,
-    color: '#555',
+    color: colors.text.disabled,
   },
   stepTotal: {
     fontSize: 10,
-    color: '#666',
+    color: colors.text.tertiary,
   },
   bar: {
     display: 'flex',

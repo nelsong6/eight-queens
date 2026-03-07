@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import type { Individual } from '../engine/types';
 import { BOARD_SIZE, MAX_FITNESS } from '../engine/types';
+import { colors } from '../colors';
 
 interface Props {
   individual: Individual | null;
@@ -33,14 +34,6 @@ function loadQueenSprite(): Promise<HTMLImageElement> {
   });
   return queenLoadPromise;
 }
-
-// ---------------------------------------------------------------------------
-// Board colors (marble-inspired from legacy chessboard.png)
-// ---------------------------------------------------------------------------
-
-const LIGHT_SQUARE = '#f0e4d0';  // warm cream
-const DARK_SQUARE = '#a08060';   // warm brown
-const ATTACK_TINT = 'rgba(255, 50, 50, 0.35)';
 
 // ---------------------------------------------------------------------------
 // Animation tier thresholds (ms)
@@ -152,7 +145,7 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
     for (let col = 0; col < BOARD_SIZE; col++) {
       for (let row = 0; row < BOARD_SIZE; row++) {
         const isLight = (col + row) % 2 === 0;
-        ctx.fillStyle = isLight ? LIGHT_SQUARE : DARK_SQUARE;
+        ctx.fillStyle = isLight ? colors.board.light : colors.board.dark;
         ctx.fillRect(col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
       }
     }
@@ -167,7 +160,7 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
         const attacking =
           ri === rj || Math.abs(i - j) === Math.abs(ri - rj);
         if (attacking) {
-          ctx.fillStyle = ATTACK_TINT;
+          ctx.fillStyle = colors.board.attack;
           ctx.fillRect(i * CELL_SIZE, ri * CELL_SIZE, CELL_SIZE, CELL_SIZE);
           ctx.fillRect(j * CELL_SIZE, rj * CELL_SIZE, CELL_SIZE, CELL_SIZE);
         }
@@ -230,7 +223,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
     width: BOARD_PX,
     height: BOARD_PX,
-    border: '2px solid #555',
+    border: `2px solid ${colors.board.border}`,
     borderRadius: 4,
     overflow: 'hidden',
   },

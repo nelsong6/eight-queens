@@ -24,6 +24,8 @@ export class GenerationBuffer {
   private producing = false;
   private produceTimerId: ReturnType<typeof setTimeout> | null = null;
   private batchSize = 1;
+  /** When true, background-produced entries skip pipeline assembly (full-mode autoplay). */
+  skipPipeline = false;
 
   /** Called when buffer transitions from empty to non-empty */
   onBufferReady: (() => void) | null = null;
@@ -185,7 +187,7 @@ export class GenerationBuffer {
           break;
         }
 
-        const result = this.runner.runGeneration();
+        const result = this.runner.runGeneration(this.skipPipeline);
         if (!result) {
           this.producing = false;
           break;

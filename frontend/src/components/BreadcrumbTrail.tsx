@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { getOp, SCREENS_PER_OP, SCREENS_PER_GENERATION } from '../engine/time-coordinate';
+import { colors } from '../colors';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -65,7 +66,16 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
           : 'Algorithm is running',
     });
 
-    // Layer 2: Granularity (only when running + micro)
+    // Layer 2: Granularity (when running)
+    const isFull = sessionPhase === 'running' && granularity === 'full';
+    if (isFull) {
+      result.push({
+        label: 'Full',
+        onClick: hasZoom ? () => { onClearZoom(); } : null,
+        helpText: 'Full-step mode: stepping through complete generations',
+      });
+    }
+
     if (isMicro) {
       const microHasDeeper = hasWalkthrough || hasZoom;
       result.push({
@@ -150,8 +160,8 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
 const styles: Record<string, React.CSSProperties> = {
   bar: {
     height: 24,
-    backgroundColor: '#12122a',
-    borderBottom: '1px solid #2a2a4a',
+    backgroundColor: colors.bg.raised,
+    borderBottom: `1px solid ${colors.border.subtle}`,
     display: 'flex',
     alignItems: 'center',
     paddingLeft: 24,
@@ -160,21 +170,21 @@ const styles: Record<string, React.CSSProperties> = {
   separator: {
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#444',
+    color: colors.text.disabled,
     margin: '0 8px',
     userSelect: 'none' as const,
   },
   clickable: {
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#6c5ce7',
+    color: colors.accent.purple,
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
   },
   current: {
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     whiteSpace: 'nowrap' as const,
   },
 };

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { colors } from '../colors';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -142,7 +143,7 @@ export const Controls: React.FC<Props> = ({
           style={{
             ...styles.splitBtn,
             opacity: (!canAct && !isWalking) ? 0.5 : 1,
-            backgroundColor: '#2a2a4a',
+            backgroundColor: colors.bg.overlay,
           }}
         >
           ⏭
@@ -181,8 +182,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
     padding: '14px 24px',
-    backgroundColor: '#12122a',
-    borderBottom: '1px solid #2a2a4a',
+    backgroundColor: colors.bg.raised,
+    borderBottom: `1px solid ${colors.border.subtle}`,
   },
   group: {
     display: 'flex',
@@ -192,7 +193,7 @@ const styles: Record<string, React.CSSProperties> = {
   divider: {
     width: 1,
     height: 18,
-    backgroundColor: '#2a2a4a',
+    backgroundColor: colors.border.subtle,
     flexShrink: 0,
   },
   btn: {
@@ -203,9 +204,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 0',
     fontSize: 11,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 4,
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
@@ -216,7 +217,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontFamily: 'monospace',
     fontWeight: 'bold',
-    backgroundColor: '#6c5ce7',
+    backgroundColor: colors.accent.purple,
     color: '#fff',
     border: 'none',
     borderRadius: 4,
@@ -229,7 +230,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
   },
   speedText: {
     fontSize: 10,
@@ -238,7 +239,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   slider: {
     width: 80,
-    accentColor: '#6c5ce7',
+    accentColor: colors.accent.purple,
   },
   granularityBtn: {
     padding: '3px 8px',
@@ -251,21 +252,21 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap' as const,
   },
   granularityBtnActive: {
-    backgroundColor: '#6c5ce7',
+    backgroundColor: colors.accent.purple,
     color: '#fff',
-    border: '1px solid #8b7cf0',
+    border: `1px solid ${colors.accent.purpleLight}`,
     fontWeight: 'bold' as const,
-    boxShadow: '0 0 6px rgba(108, 92, 231, 0.4)',
+    boxShadow: `0 0 6px ${colors.interactive.activeGlow}`,
   },
   granularityBtnInactive: {
-    backgroundColor: '#1a1a2e',
-    color: '#777',
-    border: '1px solid #2a2a4a',
+    backgroundColor: colors.bg.surface,
+    color: colors.text.tertiary,
+    border: `1px solid ${colors.border.subtle}`,
   },
   splitGroup: {
     display: 'flex',
     alignItems: 'stretch',
-    border: '1px solid #3a3a5a',
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -273,10 +274,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '3px 6px',
     fontSize: 11,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
     border: 'none',
-    borderRight: '1px solid #3a3a5a',
+    borderRight: `1px solid ${colors.border.strong}`,
     borderRadius: 0,
     width: 44,
     flexShrink: 0,
@@ -289,8 +290,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 10px',
     fontSize: 11,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
     border: 'none',
     borderRadius: 0,
     cursor: 'pointer',

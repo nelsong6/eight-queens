@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { colors } from '../colors';
 
 export interface ExpandedRect {
   top: number;
@@ -236,9 +237,9 @@ const btnBase: React.CSSProperties = {
   width: 24,
   height: 24,
   padding: 0,
-  backgroundColor: 'rgba(26, 26, 46, 0.85)',
-  color: '#e0e0e0',
-  border: '1px solid #3a3a5a',
+  backgroundColor: 'rgba(20, 20, 43, 0.85)',
+  color: colors.text.primary,
+  border: `1px solid ${colors.border.strong}`,
   borderRadius: 4,
   cursor: 'pointer',
   transition: 'opacity 200ms ease',

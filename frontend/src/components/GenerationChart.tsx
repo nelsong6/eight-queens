@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import type { GenerationSummary } from '../engine/types';
 import { MAX_FITNESS } from '../engine/types';
+import { colors } from '../colors';
 
 interface Props {
   summariesRef: React.RefObject<GenerationSummary[]>;
@@ -10,19 +11,19 @@ interface Props {
 
 const PADDING = { top: 28, right: 14, bottom: 22, left: 32 };
 
-const COLORS = {
-  bg: '#0d0d1a',
-  grid: 'rgba(100, 120, 255, 0.07)',
-  axisText: 'rgba(160, 170, 220, 0.5)',
-  bestLine: '#fbbf24',
-  bestGlow: 'rgba(251, 191, 36, 0.35)',
-  bestFill: 'rgba(251, 191, 36, 0.08)',
-  avgLine: '#818cf8',
-  avgGlow: 'rgba(129, 140, 248, 0.3)',
-  avgFill: 'rgba(129, 140, 248, 0.06)',
-  solutionLine: '#34d399',
-  solutionGlow: 'rgba(52, 211, 153, 0.15)',
-  legendText: 'rgba(180, 190, 230, 0.7)',
+const C = {
+  bg: colors.bg.base,
+  grid: colors.chart.grid,
+  axisText: colors.chart.axis,
+  bestLine: colors.chart.bestLine,
+  bestGlow: colors.chart.bestGlow,
+  bestFill: colors.chart.bestFill,
+  avgLine: colors.chart.avgLine,
+  avgGlow: colors.chart.avgGlow,
+  avgFill: colors.chart.avgFill,
+  solutionLine: colors.chart.solutionLine,
+  solutionGlow: colors.chart.solutionGlow,
+  legendText: colors.chart.legend,
 };
 
 function lerp(a: number, b: number, t: number): number {
@@ -120,7 +121,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
       ctx.setTransform(curDpr, 0, 0, curDpr, 0, 0);
 
       // Background
-      ctx.fillStyle = COLORS.bg;
+      ctx.fillStyle = C.bg;
       ctx.fillRect(0, 0, w, h);
 
       const hasData = summaries.length > 0 && playhead >= 0;
@@ -188,7 +189,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
       // Grid lines — anchored to integer values so labels stay clean during yMin animation
       const gridStep = yRange <= 12 ? 2 : yRange <= 20 ? 4 : 7;
       const gridStart = Math.ceil(yMin / gridStep) * gridStep;
-      ctx.strokeStyle = COLORS.grid;
+      ctx.strokeStyle = C.grid;
       ctx.lineWidth = 1;
       for (let y = gridStart; y <= yMax; y += gridStep) {
         const py = Math.round(toY(y)) + 0.5;
@@ -200,9 +201,9 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
 
       // Solution threshold
       ctx.save();
-      ctx.shadowColor = COLORS.solutionGlow;
+      ctx.shadowColor = C.solutionGlow;
       ctx.shadowBlur = 4;
-      ctx.strokeStyle = COLORS.solutionLine;
+      ctx.strokeStyle = C.solutionLine;
       ctx.lineWidth = 1;
       ctx.setLineDash([6, 4]);
       const solY = Math.round(toY(MAX_FITNESS)) + 0.5;
@@ -214,7 +215,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
       ctx.restore();
 
       // Y-axis labels
-      ctx.fillStyle = COLORS.axisText;
+      ctx.fillStyle = C.axisText;
       ctx.font = '9px "Inter", system-ui, sans-serif';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
@@ -227,14 +228,14 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
       const legendY = 8;
       ctx.font = '9px "Inter", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = COLORS.bestLine;
+      ctx.fillStyle = C.bestLine;
       ctx.fillRect(legendX - 72, legendY - 1, 10, 2);
-      ctx.fillStyle = COLORS.legendText;
+      ctx.fillStyle = C.legendText;
       ctx.textAlign = 'left';
       ctx.fillText('Best', legendX - 60, legendY);
-      ctx.fillStyle = COLORS.avgLine;
+      ctx.fillStyle = C.avgLine;
       ctx.fillRect(legendX - 30, legendY - 1, 10, 2);
-      ctx.fillStyle = COLORS.legendText;
+      ctx.fillStyle = C.legendText;
       ctx.fillText('Avg', legendX - 18, legendY);
 
       // X-axis labels
@@ -246,7 +247,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
       const minLabelGap = 28;
       if (hasData) {
         // "0" label at left edge (generation 0 / origin)
-        ctx.fillStyle = COLORS.axisText;
+        ctx.fillStyle = C.axisText;
         ctx.fillText('0', PADDING.left, labelY);
         let lastLabelX = PADDING.left;
 
@@ -263,7 +264,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
             : 1;
           if (alpha <= 0) continue;
           ctx.globalAlpha = alpha;
-          ctx.fillStyle = COLORS.axisText;
+          ctx.fillStyle = C.axisText;
           ctx.fillText(String(summaries[i]!.generationNumber), px, labelY);
           ctx.globalAlpha = 1;
           lastLabelX = px;
@@ -273,7 +274,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
           const tipX = PADDING.left + PLOT_W;
           if (tipX - lastLabelX >= minLabelGap) {
             ctx.globalAlpha = Math.min((frac - 0.05) * 3, 1);
-            ctx.fillStyle = COLORS.axisText;
+            ctx.fillStyle = C.axisText;
             ctx.fillText(String(lookahead.generationNumber), tipX, labelY);
             ctx.globalAlpha = 1;
           }
@@ -382,8 +383,8 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
         }
       };
 
-      drawLine(s => s.avgFitness, COLORS.avgLine, COLORS.avgGlow, COLORS.avgFill, false);
-      drawLine(s => s.bestFitness, COLORS.bestLine, COLORS.bestGlow, COLORS.bestFill, true);
+      drawLine(s => s.avgFitness, C.avgLine, C.avgGlow, C.avgFill, false);
+      drawLine(s => s.bestFitness, C.bestLine, C.bestGlow, C.bestFill, true);
 
       // Hover tooltip
       const mouse = mouseRef.current;
@@ -402,7 +403,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
 
           // Vertical crosshair
           ctx.save();
-          ctx.strokeStyle = 'rgba(180, 190, 230, 0.25)';
+          ctx.strokeStyle = colors.chart.crosshair;
           ctx.lineWidth = 1;
           ctx.setLineDash([3, 3]);
           ctx.beginPath();
@@ -414,11 +415,11 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
           // Dots on lines
           ctx.beginPath();
           ctx.arc(px, bestY, 4, 0, Math.PI * 2);
-          ctx.fillStyle = COLORS.bestLine;
+          ctx.fillStyle = C.bestLine;
           ctx.fill();
           ctx.beginPath();
           ctx.arc(px, avgY, 4, 0, Math.PI * 2);
-          ctx.fillStyle = COLORS.avgLine;
+          ctx.fillStyle = C.avgLine;
           ctx.fill();
 
           // Tooltip box
@@ -435,21 +436,21 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
           let ty = Math.min(bestY, avgY) - boxH - 6;
           if (ty < PADDING.top) ty = Math.max(bestY, avgY) + 10;
 
-          ctx.fillStyle = 'rgba(20, 20, 40, 0.92)';
+          ctx.fillStyle = colors.chart.tooltipBg;
           ctx.beginPath();
           ctx.roundRect(tx, ty, boxW, boxH, 4);
           ctx.fill();
-          ctx.strokeStyle = 'rgba(100, 120, 255, 0.2)';
+          ctx.strokeStyle = colors.chart.tooltipBorder;
           ctx.lineWidth = 1;
           ctx.stroke();
 
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
-          ctx.fillStyle = COLORS.legendText;
+          ctx.fillStyle = C.legendText;
           ctx.fillText(genLabel, tx + 8, ty + 4);
-          ctx.fillStyle = COLORS.bestLine;
+          ctx.fillStyle = C.bestLine;
           ctx.fillText(bestLabel, tx + 8, ty + 18);
-          ctx.fillStyle = COLORS.avgLine;
+          ctx.fillStyle = C.avgLine;
           ctx.fillText(avgLabel, tx + 8, ty + 32);
 
           ctx.restore();
@@ -465,7 +466,7 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={styles.panel} data-help="Fitness over generations — gold line is best fitness, purple is average, green dashed line is the solution threshold (28)">
+    <div style={styles.panel} data-help="Fitness over generations — gold line is best fitness, blue is average, green dashed line is the solution threshold (28)">
       <h3 style={styles.title} data-help="Tracks how best and average fitness evolve as generations progress">Fitness Over Generations</h3>
       <div ref={wrapperRef} style={styles.canvasWrapper}>
         <canvas
@@ -479,10 +480,10 @@ export const GenerationChart: React.FC<Props> = ({ summariesRef, playheadRef, lo
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    backgroundColor: '#0d0d1a',
+    backgroundColor: colors.bg.base,
     borderRadius: 10,
     padding: '14px 16px 12px',
-    border: '1px solid rgba(100, 120, 255, 0.1)',
+    border: `1px solid ${colors.chart.tooltipBorder}`,
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
@@ -495,7 +496,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 8px 0',
     fontSize: 14,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
     flexShrink: 0,

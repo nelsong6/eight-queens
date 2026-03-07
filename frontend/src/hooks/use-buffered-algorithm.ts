@@ -9,6 +9,7 @@ import type {
 import { AlgorithmRunner } from '../engine/algorithm-runner';
 import { GenerationBuffer, type BufferEntry } from '../engine/generation-buffer';
 import { AnimationClock } from '../engine/animation-clock';
+import { isPipelineEmpty, reconstructPipeline } from '../engine/time-coordinate';
 
 interface HistorySnapshot {
   result: GenerationResult;
@@ -133,10 +134,12 @@ export function useBufferedAlgorithm() {
     if (clock) clock.finishSweepImmediate();
   }, []);
 
-  const resume = useCallback((stepsPerTick = 1) => {
+  const resume = useCallback((stepsPerTick = 1, skipPipeline = false) => {
     const buffer = bufferRef.current;
     const clock = clockRef.current;
     if (!buffer || !clock || solved) return;
+
+    buffer.skipPipeline = skipPipeline;
 
     // Finish any pending step animation before resuming
     finishPendingSweep();
@@ -204,6 +207,9 @@ export function useBufferedAlgorithm() {
 
     // Handle any pending sweep first (from stepOnce/stepN)
     finishPendingSweep();
+
+    // Restore full pipeline capture so any post-pause steps have complete data
+    if (buffer) buffer.skipPipeline = false;
 
     // If still running with a fractional playhead, let the chart animate
     // to the next whole generation before stopping
@@ -367,17 +373,17 @@ export function useBufferedAlgorithm() {
     updateCanGoBack();
   }, [takeSnapshot, pushUndo, applyResult, updateCanGoBack, finishPendingSweep]);
 
-  const goBack = useCallback((): GenerationResult | null => {
+  const goBack = useCallback((): { result: GenerationResult; previousResult: GenerationResult | null } | null => {
     // Finish any pending step animation first
     finishPendingSweep();
 
     const undoStack = undoStackRef.current;
     if (undoStack.length === 0) return null;
 
-    // Push current state to redo
+    // Prepend current state to redo (so redo stays in forward-chronological order)
     const currentSnapshot = takeSnapshot();
     if (currentSnapshot) {
-      redoStackRef.current.push(currentSnapshot);
+      redoStackRef.current.unshift(currentSnapshot);
     }
 
     // Pop undo
@@ -405,7 +411,17 @@ export function useBufferedAlgorithm() {
     }
 
     updateCanGoBack();
-    return prev.result;
+    // Return restored result and the result below it (for previousResult in walkthrough)
+    const belowResult = undoStack.length > 0 ? undoStack[undoStack.length - 1]!.result : null;
+
+    // Lazily reconstruct pipeline from breedingData if this entry was produced
+    // during full-mode autoplay (skipPipeline=true) and has an empty pipeline stub.
+    let restoredResult = prev.result;
+    if (isPipelineEmpty(restoredResult)) {
+      restoredResult = { ...restoredResult, pipeline: reconstructPipeline(restoredResult, belowResult) };
+    }
+
+    return { result: restoredResult, previousResult: belowResult };
   }, [takeSnapshot, applyResult, updateCanGoBack, finishPendingSweep]);
 
   const resizePopulation = useCallback((newSize: number) => {
@@ -444,6 +460,12 @@ export function useBufferedAlgorithm() {
     setAlgorithmConfig(null);
     setCumulativeStats(null);
     setCanGoBack(false);
+  }, []);
+
+  /** Peek at the top of the undo stack without popping. Used for pipeline reconstruction. */
+  const peekUndoResult = useCallback((): GenerationResult | null => {
+    const stack = undoStackRef.current;
+    return stack.length > 0 ? stack[stack.length - 1]!.result : null;
   }, []);
 
   const handleSpeedChange = useCallback((newSpeed: number) => {
@@ -487,6 +509,7 @@ export function useBufferedAlgorithm() {
     resizePopulation,
     goBack,
     canGoBack,
+    peekUndoResult,
     chartPlayheadRef,
     allSummariesRef,
     lookaheadSummaryRef,

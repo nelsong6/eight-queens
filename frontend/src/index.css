@@ -1,12 +1,14 @@
 /* Button interactive states */
+/* Colors here must match colors.ts tokens (CSS can't import TS) */
+/* border.strong = #3a3a5e, accent.purple = #7c6cf0, accent.purpleLight = #9a8df5 */
 .btn:hover:not(:disabled) {
-  background-color: #3a3a5a !important;
-  border-color: #5a5a7a !important;
+  background-color: #3a3a5e !important;
+  border-color: #5a5a7e !important;
 }
 
 .btn:active:not(:disabled) {
-  background-color: #4a4a6a !important;
-  border-color: #6c5ce7 !important;
+  background-color: #4a4a6e !important;
+  border-color: #7c6cf0 !important;
   transform: scale(0.96);
 }
 
@@ -15,22 +17,23 @@
 }
 
 .btn-start:hover:not(:disabled) {
-  background-color: #7d6ee8 !important;
+  background-color: #9a8df5 !important;
   filter: brightness(1.15);
 }
 
 .btn-start:active:not(:disabled) {
-  background-color: #5a4bd6 !important;
+  background-color: #6a5cd8 !important;
   transform: scale(0.96);
 }
 
+/* accent.red = #f06b6b */
 .btn-danger:hover:not(:disabled) {
-  background-color: #a52525 !important;
+  background-color: #c04848 !important;
   filter: brightness(1.15);
 }
 
 .btn-danger:active:not(:disabled) {
-  background-color: #6e1818 !important;
+  background-color: #8a2828 !important;
   transform: scale(0.96);
 }
 

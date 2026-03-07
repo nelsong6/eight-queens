@@ -1,5 +1,6 @@
-import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName } from './types';
+import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, GenerationPipeline, PipelineSnapshot, PipelineOp, Individual, GenerationResult, Age, MutationRecord } from './types';
 import type { CategoryKey } from '../components/BreedingListboxes';
+import { cloneIndividual } from './individual';
 
 /** Total number of atomic operations per generation. */
 export const OPS_PER_GENERATION = 7;
@@ -82,6 +83,31 @@ export function categoryToOrigin(category: CategoryKey, generation: number): Poo
         pool: 'chromosomes',
       };
   }
+}
+
+// ============================================================================
+// Pipeline snapshot accessors
+// ============================================================================
+
+/**
+ * Get the pool snapshot at a given operation and boundary from the pipeline.
+ * ops[y][z]: y = operation (0–6), z = boundary (0=before, 1=transform, 2=after).
+ */
+export function getPipelineState(pipeline: GenerationPipeline, op: number, boundary: 0 | 1 | 2): PipelineSnapshot {
+  return pipeline.ops[op]![boundary];
+}
+
+/**
+ * Resolve a named pool's individuals from the pipeline at a given coordinate.
+ * Returns empty array if the pool is not present at that coordinate.
+ */
+export function resolvePoolFromPipeline(
+  pool: PoolName,
+  pipeline: GenerationPipeline,
+  op: number,
+  boundary: 0 | 1 | 2,
+): Individual[] {
+  return (getPipelineState(pipeline, op, boundary)[pool] ?? []) as Individual[];
 }
 
 /**
@@ -172,4 +198,105 @@ const TRANSFORM_DESCRIPTIONS: Record<number, { title: string; description: strin
 /** Get the transform description for an operation index. */
 export function getTransformDescription(operationIndex: number): { title: string; description: string; detail: string } {
   return TRANSFORM_DESCRIPTIONS[operationIndex]!;
+}
+
+// ============================================================================
+// Lazy pipeline reconstruction
+// ============================================================================
+
+/**
+ * Returns true when a GenerationResult has an empty (stub) pipeline —
+ * i.e. it was produced with skipPipeline=true during full-mode autoplay.
+ */
+export function isPipelineEmpty(result: GenerationResult): boolean {
+  return Object.keys(result.pipeline.ops[2]![2]).length === 0;
+}
+
+/**
+ * Reconstruct a full GenerationPipeline from breedingData, which is always
+ * computed regardless of skipPipeline. Called lazily when an undo entry with
+ * an empty pipeline needs to be navigated in micro mode.
+ *
+ * Ops 2–6: fully reconstructed from result.breedingData.
+ * Ops 0–1: require previousResult for pre-aging pool data; left empty if unavailable.
+ */
+export function reconstructPipeline(
+  result: GenerationResult,
+  previousResult: GenerationResult | null,
+): GenerationPipeline {
+  const { breedingData } = result;
+
+  // Build pre-mutation chromosome list from breedingData.
+  // Non-mutated children: aChildren[i]/bChildren[i] are already the final genes (no mutation applied).
+  // Mutated children: preMutationSolution/Fitness are stored in mutationRecords.
+  const mutationMap = new Map<number, MutationRecord>();
+  for (const rec of breedingData.mutationRecords) {
+    mutationMap.set(rec.individual.id, rec);
+  }
+
+  const targetCount = breedingData.allChildren.length;
+  const preMutationChromosomes: Individual[] = [];
+  let count = 0;
+  for (let i = 0; i < breedingData.aChildren.length && count < targetCount; i++) {
+    const aChild = breedingData.aChildren[i]!;
+    const aRec = mutationMap.get(aChild.id);
+    preMutationChromosomes.push(aRec
+      ? { ...aChild, solution: [...aRec.preMutationSolution], fitness: aRec.preMutationFitness }
+      : { ...aChild });
+    count++;
+
+    if (count < targetCount && i < breedingData.bChildren.length) {
+      const bChild = breedingData.bChildren[i]!;
+      const bRec = mutationMap.get(bChild.id);
+      preMutationChromosomes.push(bRec
+        ? { ...bChild, solution: [...bRec.preMutationSolution], fitness: bRec.preMutationFitness }
+        : { ...bChild });
+      count++;
+    }
+  }
+
+  // Derived pools from breedingData
+  const eligibleAdults = breedingData.eligibleParents;
+  const selectedPairs = breedingData.actualParents;
+  const selectedIds = new Set(selectedPairs.map(p => p.id));
+  const unselected = eligibleAdults.filter(p => !selectedIds.has(p.id));
+  const matedParents = selectedPairs;
+  const postMutationChromosomes = breedingData.allChildren;
+  const finalChildren = breedingData.allChildren;
+
+  // Transform slot (z=1) is an independent deep-clone of before, matching step() behavior.
+  const cloneSnap = (s: PipelineSnapshot): PipelineSnapshot =>
+    Object.fromEntries(
+      Object.entries(s).map(([k, v]) => [k, (v as Individual[]).map(cloneIndividual)])
+    ) as PipelineSnapshot;
+  const makeOp = (before: PipelineSnapshot, after: PipelineSnapshot): PipelineOp =>
+    [before, cloneSnap(before), after];
+
+  // Ops 0–1: pre-aging pools, require previousResult
+  let op0: PipelineOp = [{}, {}, {}];
+  let op1: PipelineOp = [{}, {}, {}];
+  if (previousResult) {
+    const oldParents = previousResult.breedingData.eligibleParents.map(p => ({ ...p, age: 3 as Age }));
+    const prevChildren = previousResult.breedingData.allChildren.map(c => ({ ...c, age: 2 as Age }));
+    op0 = makeOp(
+      { oldParents, previousChildren: prevChildren },
+      { retiredParents: oldParents, eligibleAdults },
+    );
+    op1 = makeOp(
+      { retiredParents: oldParents, eligibleAdults },
+      { eligibleAdults },
+    );
+  }
+
+  return {
+    ops: [
+      op0,
+      op1,
+      makeOp({ eligibleAdults }, { selectedPairs, unselected }),
+      makeOp({ selectedPairs, unselected }, { matedParents, unselected }),
+      makeOp({ matedParents, unselected }, { matedParents, unselected, chromosomes: preMutationChromosomes }),
+      makeOp({ matedParents, unselected, chromosomes: preMutationChromosomes }, { matedParents, unselected, chromosomes: postMutationChromosomes }),
+      makeOp({ matedParents, unselected, chromosomes: postMutationChromosomes }, { matedParents, unselected, finalChildren }),
+    ],
+  };
 }

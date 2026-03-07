@@ -37,8 +37,10 @@ export const BOARD_SIZE = 8;
 export type Age = 0 | 1 | 2 | 3;
 
 export interface Individual {
-  /** Unique ID within the generation. */
+  /** Globally unique numeric ID. */
   id: number;
+  /** Index within the generation (used for display: gen.localIndex). */
+  localIndex: number;
   /** The solution array: index=column, value=row (0-7). */
   solution: number[];
   /** Fitness score (0-28). 28 = perfect solution. */
@@ -168,6 +170,26 @@ export interface PoolOrigin {
   qualifier?: string;
 }
 
+// ============================================================================
+// Pipeline Snapshot System
+// ============================================================================
+
+/** Pool map at one boundary of one operation. Keys are PoolName values present at that coordinate. */
+export type PipelineSnapshot = Partial<Record<PoolName, Individual[]>>;
+
+/**
+ * Three snapshots per operation: before (z=0), transform (z=1), after (z=2).
+ * Transform is deep-cloned from before independently — currently the same data,
+ * but kept separate so future work can customize what the transform screen shows
+ * (e.g. individuals mid-transition, annotated with what's changing).
+ */
+export type PipelineOp = [PipelineSnapshot, PipelineSnapshot, PipelineSnapshot];
+
+/** Complete pipeline for one generation: ops[y][z] = snapshot at operation y, boundary z. */
+export interface GenerationPipeline {
+  ops: PipelineOp[]; // length 7, indexed by operation (0–6)
+}
+
 /**
  * Result of running a single generation step.
  */
@@ -188,4 +210,6 @@ export interface GenerationResult {
   breedingData: GenerationBreedingData;
   /** Per-step statistics. */
   stepStatistics: StepStatistics;
+  /** Complete pipeline snapshot: all pool states at every operation boundary. */
+  pipeline: GenerationPipeline;
 }

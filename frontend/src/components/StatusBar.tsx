@@ -1,6 +1,7 @@
 import React from 'react';
 import type { AlgorithmConfig } from '../engine/types';
 import { MAX_FITNESS } from '../engine/types';
+import { colors } from '../colors';
 
 interface Props {
   generation: number;
@@ -62,7 +63,7 @@ const Stat: React.FC<{
     <span
       style={{
         ...styles.statValue,
-        color: highlight ? '#4caf50' : '#e0e0e0',
+        color: highlight ? colors.accent.green : colors.text.primary,
       }}
     >
       {value}
@@ -72,10 +73,10 @@ const Stat: React.FC<{
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: colors.bg.surface,
     borderRadius: 8,
     padding: 10,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     flex: 1,
     minHeight: 0,
     overflow: 'hidden',
@@ -89,7 +90,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 6,
     fontSize: 9,
     fontFamily: 'monospace',
-    color: '#777',
+    color: colors.text.tertiary,
     lineHeight: 1.3,
     wordBreak: 'break-all' as const,
   },
@@ -97,7 +98,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 6,
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#ccc',
+    color: colors.text.secondary,
     lineHeight: 1.3,
   },
   stat: {
@@ -108,7 +109,7 @@ const styles: Record<string, React.CSSProperties> = {
   statLabel: {
     fontSize: 9,
     fontFamily: 'monospace',
-    color: '#777',
+    color: colors.text.tertiary,
     textTransform: 'uppercase',
   },
   statValue: {

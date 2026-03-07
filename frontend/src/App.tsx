@@ -11,10 +11,11 @@ import { BreadcrumbTrail } from './components/BreadcrumbTrail';
 import { ZoomablePanel } from './components/ZoomablePanel';
 import { SpecimenPanel } from './components/SpecimenPanel';
 import type { AlgorithmConfig, Individual, GenerationResult, PoolOrigin } from './engine/types';
-import { poolDisplayName, OPS_PER_GENERATION, SCREENS_PER_OP, getOp } from './engine/time-coordinate';
+import { poolDisplayName, OPS_PER_GENERATION, SCREENS_PER_OP, getOp, isPipelineEmpty, reconstructPipeline } from './engine/time-coordinate';
 import { SubPhaseScreen } from './components/walkthrough/SubPhaseScreen';
 import { createRandomIndividual } from './engine/individual';
 import { PRESETS } from './data/presets';
+import { colors } from './colors';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -22,7 +23,6 @@ interface WalkthroughState {
   operation: number;       // y-axis: 0–6
   boundary: 0 | 1 | 2;    // t-axis: before/transform/after
   result: GenerationResult;
-  previousResult: GenerationResult | null;
   browsePairIndex: number;
 }
 
@@ -34,6 +34,14 @@ const App: React.FC = () => {
 
   // Walkthrough state
   const [walkthroughState, setWalkthroughState] = useState<WalkthroughState | null>(null);
+
+  // Ensure a result has a populated pipeline before entering micro mode.
+  // Results produced during full-mode autoplay have empty pipeline stubs;
+  // reconstruct from breedingData (always computed) when needed.
+  const withPipeline = useCallback((result: GenerationResult): GenerationResult => {
+    if (!isPipelineEmpty(result)) return result;
+    return { ...result, pipeline: reconstructPipeline(result, algorithm.peekUndoResult()) };
+  }, [algorithm]);
 
   // Step granularity (applies to manual step only; auto-play always uses full step)
   const [granularity, setGranularity] = useState<'full' | 'micro'>('full');
@@ -52,19 +60,13 @@ const App: React.FC = () => {
     if (g === 'full') {
       setWalkthroughState(null);
     } else if (g === 'micro') {
-      // Gen 0 starts at 0.7.1 (seed connecting point), others at x.0.0.
-      // Don't restart the algorithm — gen-0 data is already eagerly computed in config phase.
-      if (sessionPhase === 'config') {
-        setSessionPhase('running');
-      }
       const result = algorithm.lastResult;
       if (result) {
-        // Gen 0 is the synthetic seed — start at 0.7.1 (the seed's connecting point)
-        const isGen0 = result.generationNumber === 0;
-        setWalkthroughState({ operation: isGen0 ? OPS_PER_GENERATION - 1 : 0, boundary: isGen0 ? 2 : 0, result, previousResult: null, browsePairIndex: 0 });
+        // Stay at the end of the current generation (x.6.2) — matches the full-mode view
+        setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: withPipeline(result), browsePairIndex: 0 });
       }
     }
-  }, [sessionPhase, algorithm]);
+  }, [algorithm]);
 
   // Pending config from ConfigPanel (used for auto-start on first action)
   const [pendingConfig, setPendingConfig] = useState<AlgorithmConfig>({
@@ -210,11 +212,10 @@ const App: React.FC = () => {
   const handleWalkThrough = useCallback(() => {
     ensureStarted();
     if (!walkthroughState) {
-      // Show current state — gen 0 starts at 0.7.1 (seed connecting point), others at x.0.0
+      // Show current state at end of current generation (x.6.2)
       const result = algorithm.lastResult;
       if (result) {
-        const isGen0 = result.generationNumber === 0;
-        setWalkthroughState({ operation: isGen0 ? OPS_PER_GENERATION - 1 : 0, boundary: isGen0 ? 2 : 0, result, previousResult: null, browsePairIndex: 0 });
+        setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: withPipeline(result), browsePairIndex: 0 });
       }
     } else if (walkthroughState.boundary < 2) {
       setWalkthroughState({ ...walkthroughState, boundary: (walkthroughState.boundary + 1) as 0 | 1 | 2 });
@@ -222,10 +223,9 @@ const App: React.FC = () => {
       setWalkthroughState({ ...walkthroughState, operation: walkthroughState.operation + 1, boundary: 0 });
     } else {
       // Op 7 boundary 2 done → run next generation, start at op 0 boundary 0
-      const prevResult = walkthroughState.result;
       const result = algorithm.step();
       if (result) {
-        setWalkthroughState({ operation: 0, boundary: 0, result, previousResult: prevResult, browsePairIndex: 0 });
+        setWalkthroughState({ operation: 0, boundary: 0, result, browsePairIndex: 0 });
       }
     }
   }, [walkthroughState, algorithm, ensureStarted]);
@@ -245,7 +245,7 @@ const App: React.FC = () => {
       setWalkthroughState({ ...walkthroughState, operation, boundary, browsePairIndex: 0 });
     } else if (algorithm.lastResult) {
       // Full mode: create walkthrough state from current result
-      setWalkthroughState({ operation, boundary, result: algorithm.lastResult, previousResult: null, browsePairIndex: 0 });
+      setWalkthroughState({ operation, boundary, result: withPipeline(algorithm.lastResult), browsePairIndex: 0 });
     }
   }, [walkthroughState, algorithm, granularity]);
 
@@ -253,7 +253,7 @@ const App: React.FC = () => {
     ensureStarted();
     setGranularity('full');
     setWalkthroughState(null);
-    algorithm.resume(stepCount);
+    algorithm.resume(stepCount, /* skipPipeline */ true);
   }, [ensureStarted, algorithm]);
 
   const handleStep = useCallback(() => {
@@ -292,9 +292,9 @@ const App: React.FC = () => {
           return;
         }
         // At op 0 boundary 0: go back a full generation
-        const restoredResult = algorithm.goBack();
-        if (restoredResult) {
-          setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: restoredResult, previousResult: null, browsePairIndex: 0 });
+        const restored = algorithm.goBack();
+        if (restored) {
+          setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: restored.result, browsePairIndex: 0 });
         } else {
           // At generation 0 with no undo history: return to config phase
           setWalkthroughState(null);
@@ -306,8 +306,8 @@ const App: React.FC = () => {
       setWalkthroughState(null);
       return;
     }
-    const restored = algorithm.goBack();
-    if (!restored) {
+    const restoredFull = algorithm.goBack();
+    if (!restoredFull) {
       // At generation 0 with no undo history: return to config phase
       handleReset();
     }
@@ -339,18 +339,19 @@ const App: React.FC = () => {
     ?? (hasStarted ? { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 }, pool: 'finalChildren' as const } : null);
 
   // Status message matching C# behavior
-  const statusMessage = useMemo<{ label: string; value: string }>(() => {
+  const statusMessage = useMemo<{ label: string; value: string; individual?: Individual; origin?: PoolOrigin }>(() => {
     if (viewedIndividual) {
       return { label: viewedOrigin ? poolDisplayName(viewedOrigin) : 'Individual', value: `f:${viewedIndividual.fitness}/28` };
     }
+    const finalOrigin: PoolOrigin = { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 }, pool: 'finalChildren' as const };
     if (algorithm.solved && algorithm.solutionIndividual) {
       const sol = algorithm.solutionIndividual.solution.join(' ');
-      return { label: 'Solution', value: `[${sol}]` };
+      return { label: 'Solution', value: `[${sol}]`, individual: algorithm.solutionIndividual, origin: finalOrigin };
     }
     if (algorithm.lastResult) {
       const best = algorithm.lastResult.bestIndividual;
       const sol = best.solution.join(' ');
-      return { label: 'Best specimen', value: `[${sol}]` };
+      return { label: 'Best specimen', value: `[${sol}]`, individual: best, origin: finalOrigin };
     }
     return { label: 'Best specimen', value: '' };
   }, [viewedIndividual, viewedOrigin, algorithm.solved, algorithm.solutionIndividual, algorithm.lastResult, algorithm.generation]);
@@ -459,7 +460,6 @@ const App: React.FC = () => {
                     boundary: walkthroughState.boundary,
                   }}
                   result={walkthroughState.result}
-                  previousResult={walkthroughState.previousResult}
                   onSelectIndividual={handleSelectIndividual}
                   browsePairIndex={walkthroughState.browsePairIndex}
                   onPairChange={handleWalkthroughPairChange}
@@ -472,15 +472,14 @@ const App: React.FC = () => {
                     operation: OPS_PER_GENERATION - 1,
                     boundary: 2,
                   }}
-                  result={algorithm.lastResult}
-                  previousResult={null}
+                  result={withPipeline(algorithm.lastResult)}
                   onSelectIndividual={handleSelectIndividual}
                   browsePairIndex={0}
                   onPairChange={() => {}}
                   onNavigate={handleWalkthroughNavigate}
                 />
               ) : (
-                <div style={{ padding: 16, color: '#666', fontFamily: 'monospace', fontSize: 11 }}>
+                <div style={{ padding: 16, color: colors.text.tertiary, fontFamily: 'monospace', fontSize: 11 }}>
                   Loading population…
                 </div>
               )}
@@ -524,6 +523,9 @@ const App: React.FC = () => {
                 avgFitness={algorithm.avgFitness}
                 solved={algorithm.solved}
                 statusMessage={statusMessage}
+                onStatusClick={statusMessage?.individual && statusMessage?.origin ? () => {
+                  handleSelectIndividual(statusMessage.individual!, statusMessage.origin!);
+                } : undefined}
               />
             </ZoomablePanel>
           </div>
@@ -549,8 +551,8 @@ export default App;
 const styles: Record<string, React.CSSProperties> = {
   app: {
     height: '100vh',
-    backgroundColor: '#0d0d1a',
-    color: '#e0e0e0',
+    backgroundColor: colors.bg.base,
+    color: colors.text.primary,
     fontFamily: "'Segoe UI', 'Roboto', monospace",
     padding: 0,
     margin: 0,
@@ -567,8 +569,8 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '16px 24px',
-    backgroundColor: '#12122a',
-    borderBottom: '1px solid #2a2a4a',
+    backgroundColor: colors.bg.raised,
+    borderBottom: `1px solid ${colors.border.subtle}`,
     flexWrap: 'wrap' as const,
     gap: 12,
   },
@@ -585,14 +587,14 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     fontFamily: 'monospace',
     letterSpacing: -0.5,
   },
   subtitle: {
     margin: '4px 0 0 0',
     fontSize: 12,
-    color: '#888',
+    color: colors.text.tertiary,
     fontFamily: 'monospace',
   },
   controlsWrapper: {
@@ -618,7 +620,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 28,
     fontFamily: 'monospace',
     fontWeight: 'bold',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     fontVariantNumeric: 'tabular-nums',
     minWidth: 28,
     textAlign: 'center' as const,
@@ -627,7 +629,7 @@ const styles: Record<string, React.CSSProperties> = {
   coordLabel: {
     fontSize: 8,
     fontFamily: 'monospace',
-    color: '#555',
+    color: colors.text.disabled,
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
@@ -635,7 +637,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 28,
     fontFamily: 'monospace',
     fontWeight: 'bold',
-    color: '#3a3a5a',
+    color: colors.border.strong,
     lineHeight: 1,
   },
   backdrop: {

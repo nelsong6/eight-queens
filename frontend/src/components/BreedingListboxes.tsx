@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import type { Individual, MutationRecord, GenerationBreedingData, PoolOrigin } from '../engine/types';
 import { categoryToOrigin, formatCoordinate } from '../engine/time-coordinate';
+import { colors } from '../colors';
 
 interface Props {
   breedingData: GenerationBreedingData | null;
@@ -14,27 +15,27 @@ interface Props {
 // Virtual scroll list for large populations
 // ---------------------------------------------------------------------------
 
-const ITEM_HEIGHT = 22;
+const ITEM_HEIGHT = 28;
 const MIN_CONTAINER_HEIGHT = 150;
 const DEFAULT_VISIBLE_HEIGHT = 2000; // overestimate to avoid partial first render
 const OVERSCAN = 3;
 
-// Grid cell widths in px (monospace 11px ≈ 6.6px per ch)
-const COL_ID = '36px';    // individual index
-const COL_GENE = '22px';  // single gene digit (with cell padding)
-const COL_FIT = '24px';   // fitness "XX"
-const COL_EXTRA = '24px'; // born gen / partner count
-const COL_ARROW = '14px'; // arrow between sections
+// Grid cell widths in px (monospace 14px ≈ 8.4px per ch)
+const COL_ID = '72px';    // individual index
+const COL_GENE = '28px';  // single gene digit (with cell padding)
+const COL_FIT = '30px';   // fitness "XX"
+const COL_EXTRA = '30px'; // born gen / partner count
+const COL_ARROW = '18px'; // arrow between sections
 
 // Base cell style — gives each span a visible right border like a spreadsheet
 // Spread into per-column styles, then set textAlign to control justify
 const CELL: React.CSSProperties = {
-  borderRight: '1px solid #232346',
+  borderRight: `1px solid ${colors.border.subtle}`,
   padding: '0 3px',
 };
 
 // Shared help text for column headers and cell values
-const HELP_ID = 'Individual index — each row is one individual. Click header to sort';
+const HELP_ID = 'Individual ID (generation.index) — generation -1 = synthetic seed parent. Click header to sort';
 const HELP_GENES = 'Each row is one individual — an 8-gene sequence representing queen positions on the board';
 const HELP_FITNESS = 'Fitness score (0–28) — number of non-attacking queen pairs. Click header to sort';
 const HELP_BORN = 'Birth generation — which generation created this individual';
@@ -81,13 +82,16 @@ const VirtualList: React.FC<{
   void resizeTick; // trigger re-render on resize
   const visibleHeight = containerRef.current?.clientHeight || DEFAULT_VISIBLE_HEIGHT;
 
-  const { idWidth, fitWidth } = useMemo(() => {
-    let maxId = 0, maxFit = 0;
+  const { genWidth, indexWidth, fitWidth } = useMemo(() => {
+    let maxGenLen = 1, maxIndexLen = 1, maxFit = 0;
     for (const ind of items) {
-      if (ind.id > maxId) maxId = ind.id;
+      const genLen = String(ind.bornGeneration ?? 0).length;
+      const indexLen = String(ind.localIndex).length;
+      if (genLen > maxGenLen) maxGenLen = genLen;
+      if (indexLen > maxIndexLen) maxIndexLen = indexLen;
       if (ind.fitness > maxFit) maxFit = ind.fitness;
     }
-    return { idWidth: Math.max(3, String(maxId).length), fitWidth: String(maxFit).length };
+    return { genWidth: maxGenLen, indexWidth: maxIndexLen, fitWidth: String(maxFit).length };
   }, [items]);
 
   const sortedItems = useMemo(() => {
@@ -126,7 +130,7 @@ const VirtualList: React.FC<{
     <div style={vlStyles.wrapper}>
       <div style={{ ...vlStyles.sortBar, gridTemplateColumns: gridCols }}>
         <span
-          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'right' as const, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'center' as const, color: sortField === 'id' ? colors.accent.gold : colors.text.disabled }}
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help={HELP_ID}
@@ -134,13 +138,13 @@ const VirtualList: React.FC<{
           #
         </span>
         <span
-          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
+          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
           data-help={HELP_GENES}
         >
           {'\uD83E\uDDEC'}
         </span>
         <span
-          style={{ ...vlStyles.sortBtn, gridColumn: '10', padding: '0 3px', textAlign: 'right' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, gridColumn: '10', padding: '0 3px', textAlign: 'center' as const, color: sortField === 'fitness' ? colors.accent.gold : colors.text.disabled }}
           onClick={() => toggleSort('fitness')}
           title="Sort by fitness"
           data-help={HELP_FITNESS}
@@ -149,7 +153,7 @@ const VirtualList: React.FC<{
         </span>
         {showBornGen && (
           <span
-            style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
+            style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
             title="Generation this individual was born in"
             data-help={HELP_BORN}
           >
@@ -158,7 +162,7 @@ const VirtualList: React.FC<{
         )}
         {partnerCounts && (
           <span
-            style={{ ...vlStyles.sortBtn, gridColumn: showBornGen ? '12' : '11', padding: '0 3px', textAlign: 'right' as const, color: sortField === 'partners' ? '#ffd700' : '#555' }}
+            style={{ ...vlStyles.sortBtn, gridColumn: showBornGen ? '12' : '11', padding: '0 3px', textAlign: 'center' as const, color: sortField === 'partners' ? colors.accent.gold : colors.text.disabled }}
             onClick={() => toggleSort('partners')}
             title="Sort by number of partners"
             data-help={HELP_PARTNERS}
@@ -185,11 +189,11 @@ const VirtualList: React.FC<{
                   ...vlStyles.item,
                   gridTemplateColumns: gridCols,
                   top: index * ITEM_HEIGHT,
-                  backgroundColor: isSelected ? '#3a3a6a' : stripe ? '#16162e' : 'transparent',
+                  backgroundColor: isSelected ? colors.interactive.selected : stripe ? colors.interactive.rowStripe : 'transparent',
                 }}
                 onClick={() => onSelect(ind)}
               >
-                <span style={vlStyles.id} data-help={HELP_ID}>{String(ind.id).padStart(idWidth)}</span>
+                <span style={vlStyles.id} data-help={HELP_ID}>{String(ind.bornGeneration ?? 0).padStart(genWidth)}.{String(ind.localIndex).padEnd(indexWidth)}</span>
                 {ind.solution.map((gene, gi) => (
                   <span key={gi} style={vlStyles.gene} data-help={HELP_GENES}>{gene}</span>
                 ))}
@@ -250,13 +254,16 @@ const MutationList: React.FC<{
   void resizeTick;
   const visibleHeight = containerRef.current?.clientHeight || DEFAULT_VISIBLE_HEIGHT;
 
-  const { idWidth, fitWidth } = useMemo(() => {
-    let maxId = 0, maxFit = 0;
+  const { genWidth, indexWidth, fitWidth } = useMemo(() => {
+    let maxGenLen = 1, maxIndexLen = 1, maxFit = 0;
     for (const rec of records) {
-      if (rec.individual.id > maxId) maxId = rec.individual.id;
+      const genLen = String(rec.individual.bornGeneration ?? 0).length;
+      const indexLen = String(rec.individual.localIndex).length;
+      if (genLen > maxGenLen) maxGenLen = genLen;
+      if (indexLen > maxIndexLen) maxIndexLen = indexLen;
       if (rec.individual.fitness > maxFit) maxFit = rec.individual.fitness;
     }
-    return { idWidth: Math.max(3, String(maxId).length), fitWidth: String(maxFit).length };
+    return { genWidth: maxGenLen, indexWidth: maxIndexLen, fitWidth: String(maxFit).length };
   }, [records]);
 
   const sortedRecords = useMemo(() => {
@@ -285,7 +292,7 @@ const MutationList: React.FC<{
     <div style={vlStyles.wrapper}>
       <div style={{ ...mutStyles.sortBar, gridTemplateColumns: gridCols }}>
         <span
-          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'right' as const, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'center' as const, color: sortField === 'id' ? colors.accent.gold : colors.text.disabled }}
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help={HELP_ID}
@@ -293,16 +300,16 @@ const MutationList: React.FC<{
           #
         </span>
         <span
-          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
+          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
           data-help={HELP_GENES}
         >
           {'\uD83E\uDDEC'}
         </span>
-        <span style={{ gridColumn: '10', padding: '0 3px', textAlign: 'right' as const, color: '#666' }}>
+        <span style={{ gridColumn: '10', padding: '0 3px', textAlign: 'center' as const, color: colors.text.tertiary }}>
           before
         </span>
         <span />
-        <span style={{ gridColumn: '20', textAlign: 'right' as const, color: '#666' }}>
+        <span style={{ gridColumn: '20', textAlign: 'center' as const, color: colors.text.tertiary }}>
           after
         </span>
       </div>
@@ -322,6 +329,7 @@ const MutationList: React.FC<{
             const isAfterSelected = isSelected && selectedSide === 'after';
             const beforeInd: Individual = {
               id: ind.id,
+              localIndex: ind.localIndex,
               solution: rec.preMutationSolution,
               fitness: rec.preMutationFitness,
               age: ind.age,
@@ -334,15 +342,15 @@ const MutationList: React.FC<{
                   ...mutStyles.item,
                   gridTemplateColumns: gridCols,
                   top: index * ITEM_HEIGHT,
-                  backgroundColor: isSelected ? '#3a3a6a' : stripe ? '#16162e' : 'transparent',
+                  backgroundColor: isSelected ? colors.interactive.selected : stripe ? colors.interactive.rowStripe : 'transparent',
                 }}
               >
-                <span style={vlStyles.id} data-help={HELP_ID}>{String(ind.id).padStart(idWidth)}</span>
+                <span style={vlStyles.id} data-help={HELP_ID}>{String(ind.bornGeneration ?? 0).padStart(genWidth)}.{String(ind.localIndex).padEnd(indexWidth)}</span>
                 {/* Before genome — clickable */}
                 <span
                   style={{
                     ...mutStyles.halfClickable,
-                    backgroundColor: isBeforeSelected ? '#3a3a6a' : 'transparent',
+                    backgroundColor: isBeforeSelected ? colors.interactive.selected : 'transparent',
                     gridColumn: '2 / 11',
                     display: 'grid',
                     gridTemplateColumns: 'subgrid',
@@ -366,7 +374,7 @@ const MutationList: React.FC<{
                 <span
                   style={{
                     ...mutStyles.halfClickable,
-                    backgroundColor: isAfterSelected ? '#3a3a6a' : 'transparent',
+                    backgroundColor: isAfterSelected ? colors.interactive.selected : 'transparent',
                     gridColumn: '12 / 21',
                     display: 'grid',
                     gridTemplateColumns: 'subgrid',
@@ -384,7 +392,7 @@ const MutationList: React.FC<{
                   ))}
                   <span style={{
                     ...vlStyles.fitness,
-                    color: fitDelta > 0 ? '#4caf50' : fitDelta < 0 ? '#ff6b6b' : '#ffd700',
+                    color: fitDelta > 0 ? colors.accent.green : fitDelta < 0 ? colors.accent.red : colors.accent.gold,
                   }} data-help={HELP_FITNESS}>
                     {String(ind.fitness).padStart(fitWidth)}
                   </span>
@@ -407,6 +415,7 @@ interface ChildRecord {
   parentA: Individual;
   parentB: Individual;
   crossoverPoint: number;
+  isChildA: boolean;
 }
 
 const ChildrenList: React.FC<{
@@ -444,13 +453,16 @@ const ChildrenList: React.FC<{
   void resizeTick;
   const visibleHeight = containerRef.current?.clientHeight || DEFAULT_VISIBLE_HEIGHT;
 
-  const { idWidth, fitWidth } = useMemo(() => {
-    let maxId = 0, maxFit = 0;
+  const { genWidth, indexWidth, fitWidth } = useMemo(() => {
+    let maxGenLen = 1, maxIndexLen = 1, maxFit = 0;
     for (const rec of records) {
-      if (rec.child.id > maxId) maxId = rec.child.id;
+      const genLen = String(rec.child.bornGeneration ?? 0).length;
+      const indexLen = String(rec.child.localIndex).length;
+      if (genLen > maxGenLen) maxGenLen = genLen;
+      if (indexLen > maxIndexLen) maxIndexLen = indexLen;
       if (rec.child.fitness > maxFit) maxFit = rec.child.fitness;
     }
-    return { idWidth: Math.max(3, String(maxId).length), fitWidth: String(maxFit).length };
+    return { genWidth: maxGenLen, indexWidth: maxIndexLen, fitWidth: String(maxFit).length };
   }, [records]);
 
   const parentIdWidth = useMemo(() => {
@@ -488,7 +500,7 @@ const ChildrenList: React.FC<{
     <div style={vlStyles.wrapper}>
       <div style={{ ...mutStyles.sortBar, gridTemplateColumns: gridCols }}>
         <span
-          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'right' as const, color: sortField === 'id' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, padding: '0 3px', textAlign: 'center' as const, color: sortField === 'id' ? colors.accent.gold : colors.text.disabled }}
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help={HELP_ID}
@@ -496,13 +508,13 @@ const ChildrenList: React.FC<{
           #
         </span>
         <span
-          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
+          style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
           data-help={HELP_GENES}
         >
           {'\uD83E\uDDEC'}
         </span>
         <span
-          style={{ ...vlStyles.sortBtn, gridColumn: '10', padding: '0 3px', textAlign: 'right' as const, color: sortField === 'fitness' ? '#ffd700' : '#555' }}
+          style={{ ...vlStyles.sortBtn, gridColumn: '10', padding: '0 3px', textAlign: 'center' as const, color: sortField === 'fitness' ? colors.accent.gold : colors.text.disabled }}
           onClick={() => toggleSort('fitness')}
           title="Sort by fitness"
           data-help={HELP_FITNESS}
@@ -510,14 +522,14 @@ const ChildrenList: React.FC<{
           {'\uD83C\uDFC5'}
         </span>
         <span
-          style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: '#555' }}
+          style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
           title="Generation this individual was born in"
           data-help={HELP_BORN}
         >
           {'\uD83D\uDC23'}
         </span>
-        <span style={{ gridColumn: '13 / 22', textAlign: 'center' as const, color: '#666' }}>parent A</span>
-        <span style={{ gridColumn: '22 / 31', textAlign: 'center' as const, color: '#666' }}>parent B</span>
+        <span style={{ gridColumn: '13 / 22', textAlign: 'center' as const, color: colors.text.tertiary }}>parent A</span>
+        <span style={{ gridColumn: '22 / 31', textAlign: 'center' as const, color: colors.text.tertiary }}>parent B</span>
       </div>
       <div
         ref={containerRef}
@@ -527,10 +539,9 @@ const ChildrenList: React.FC<{
         <div style={{ height: totalHeight, position: 'relative' as const }}>
           {sortedRecords.slice(startIndex, endIndex).map((rec, i) => {
             const index = startIndex + i;
-            const { child, parentA, parentB, crossoverPoint } = rec;
+            const { child, parentA, parentB, crossoverPoint, isChildA } = rec;
             const isSelected = child.id === selectedId;
             const stripe = index % 2 === 1;
-            const isChildA = child.id % 2 === 0;
             return (
               <div
                 key={index}
@@ -539,15 +550,15 @@ const ChildrenList: React.FC<{
                   ...mutStyles.item,
                   gridTemplateColumns: gridCols,
                   top: index * ITEM_HEIGHT,
-                  backgroundColor: isSelected ? '#3a3a6a' : stripe ? '#16162e' : 'transparent',
+                  backgroundColor: isSelected ? colors.interactive.selected : stripe ? colors.interactive.rowStripe : 'transparent',
                 }}
               >
-                <span style={vlStyles.id} data-help={HELP_ID}>{String(child.id).padStart(idWidth)}</span>
+                <span style={vlStyles.id} data-help={HELP_ID}>{String(child.bornGeneration ?? 0).padStart(genWidth)}.{String(child.localIndex).padEnd(indexWidth)}</span>
                 {/* Child genome — color genes by source parent */}
                 <span
                   style={{
                     ...mutStyles.halfClickable,
-                    backgroundColor: isSelected ? '#3a3a6a' : 'transparent',
+                    backgroundColor: isSelected ? colors.interactive.selected : 'transparent',
                     gridColumn: '2 / 11',
                     display: 'grid',
                     gridTemplateColumns: 'subgrid',
@@ -559,7 +570,7 @@ const ChildrenList: React.FC<{
                     return (
                       <span
                         key={gi}
-                        style={{ ...CELL, textAlign: 'center' as const, color: fromA ? '#6bc5f7' : '#c49df7' }}
+                        style={{ ...CELL, textAlign: 'center' as const, color: fromA ? colors.parent.a : colors.parent.b }}
                         data-help={HELP_GENES}
                       >
                         {gene}
@@ -576,7 +587,7 @@ const ChildrenList: React.FC<{
                 <span
                   style={{
                     ...mutStyles.halfClickable,
-                    backgroundColor: selectedId === parentA.id ? '#3a3a6a' : 'transparent',
+                    backgroundColor: selectedId === parentA.id ? colors.interactive.selected : 'transparent',
                     gridColumn: '13 / 22',
                     display: 'grid',
                     gridTemplateColumns: 'subgrid',
@@ -585,7 +596,7 @@ const ChildrenList: React.FC<{
                   title={`Parent A #${parentA.id}`}
                 >
                   {parentA.solution.map((gene, gi) => (
-                    <span key={gi} style={{ ...CELL, textAlign: 'center' as const, color: '#6bc5f7' }} data-help={HELP_GENES}>{gene}</span>
+                    <span key={gi} style={{ ...CELL, textAlign: 'center' as const, color: colors.parent.a }} data-help={HELP_GENES}>{gene}</span>
                   ))}
                   <span style={{ ...childStyles.parentFit }}>{String(parentA.id).padStart(parentIdWidth)}</span>
                 </span>
@@ -593,7 +604,7 @@ const ChildrenList: React.FC<{
                 <span
                   style={{
                     ...mutStyles.halfClickable,
-                    backgroundColor: selectedId === parentB.id ? '#3a3a6a' : 'transparent',
+                    backgroundColor: selectedId === parentB.id ? colors.interactive.selected : 'transparent',
                     gridColumn: '22 / 31',
                     display: 'grid',
                     gridTemplateColumns: 'subgrid',
@@ -602,7 +613,7 @@ const ChildrenList: React.FC<{
                   title={`Parent B #${parentB.id}`}
                 >
                   {parentB.solution.map((gene, gi) => (
-                    <span key={gi} style={{ ...CELL, textAlign: 'center' as const, color: '#c49df7' }} data-help={HELP_GENES}>{gene}</span>
+                    <span key={gi} style={{ ...CELL, textAlign: 'center' as const, color: colors.parent.b }} data-help={HELP_GENES}>{gene}</span>
                   ))}
                   <span style={{ ...childStyles.parentFit }}>{String(parentB.id).padStart(parentIdWidth)}</span>
                 </span>
@@ -689,7 +700,7 @@ const ActualParentsList: React.FC<{
     <div style={actualParentStyles.container}>
       <div style={actualParentStyles.primary}>
         <div style={actualParentStyles.subHeader}>
-          Individual parents <span style={styles.count}>({breedingData.actualParents.length})</span>
+          Individual parents <span style={bStyles.count}>({breedingData.actualParents.length})</span>
         </div>
         <VirtualList
           items={breedingData.actualParents}
@@ -702,7 +713,7 @@ const ActualParentsList: React.FC<{
       <div style={actualParentStyles.secondary}>
         <div style={actualParentStyles.subHeader}>
           {selectedParent
-            ? <>Mates of #{selectedParent.id} <span style={styles.count}>({partners.length} matings)</span></>
+            ? <>Mates of #{selectedParent.id} <span style={bStyles.count}>({partners.length} matings)</span></>
             : 'Select a parent'}
         </div>
         <VirtualList
@@ -746,17 +757,17 @@ const actualParentStyles: Record<string, React.CSSProperties> = {
   subHeader: {
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#ccc',
+    color: colors.text.secondary,
     fontWeight: 'bold',
   },
 };
 
 const childStyles: Record<string, React.CSSProperties> = {
   parentFit: {
-    color: '#666',
+    color: colors.text.tertiary,
     whiteSpace: 'nowrap' as const,
-    textAlign: 'right' as const,
-    fontSize: 10,
+    textAlign: 'center' as const,
+    fontSize: 13,
   },
 };
 
@@ -764,11 +775,11 @@ const mutStyles: Record<string, React.CSSProperties> = {
   sortBar: {
     columnGap: 0,
     padding: '2px 6px',
-    fontSize: 10,
+    fontSize: 13,
     fontFamily: 'monospace',
-    backgroundColor: '#1a1a35',
+    backgroundColor: colors.bg.raised,
     borderRadius: '4px 4px 0 0',
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     borderBottom: 'none',
     display: 'grid',
   },
@@ -780,9 +791,9 @@ const mutStyles: Record<string, React.CSSProperties> = {
     lineHeight: `${ITEM_HEIGHT}px`,
     paddingLeft: 6,
     paddingRight: 6,
-    fontSize: 11,
+    fontSize: 14,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     cursor: 'pointer',
     display: 'grid',
     gap: 0,
@@ -790,28 +801,28 @@ const mutStyles: Record<string, React.CSSProperties> = {
   },
   dimGene: {
     ...CELL,
-    color: '#777',
+    color: colors.text.tertiary,
     textAlign: 'center' as const,
   },
   oldGene: {
     ...CELL,
-    color: '#ff6b6b',
+    color: colors.accent.red,
     textAlign: 'center' as const,
   },
   mutatedGene: {
     ...CELL,
-    color: '#ff6b6b',
+    color: colors.accent.red,
     fontWeight: 'bold',
     textAlign: 'center' as const,
   },
   dimFitness: {
     ...CELL,
-    color: '#666',
+    color: colors.text.tertiary,
     whiteSpace: 'nowrap' as const,
-    textAlign: 'right' as const,
+    textAlign: 'center' as const,
   },
   arrow: {
-    color: '#555',
+    color: colors.text.disabled,
     textAlign: 'center' as const,
   },
   halfClickable: {
@@ -832,11 +843,11 @@ const vlStyles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT}`,
     columnGap: 0,
     padding: '2px 6px',
-    fontSize: 10,
+    fontSize: 13,
     fontFamily: 'monospace',
-    backgroundColor: '#1a1a35',
+    backgroundColor: colors.bg.raised,
     borderRadius: '4px 4px 0 0',
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     borderBottom: 'none',
   },
   sortBtn: {
@@ -848,9 +859,9 @@ const vlStyles: Record<string, React.CSSProperties> = {
     flexGrow: 1,
     overflowY: 'auto' as const,
     overflowX: 'hidden' as const,
-    backgroundColor: '#12122a',
+    backgroundColor: colors.bg.raised,
     borderRadius: '0 0 4px 4px',
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
   },
   item: {
     position: 'absolute',
@@ -860,20 +871,20 @@ const vlStyles: Record<string, React.CSSProperties> = {
     lineHeight: `${ITEM_HEIGHT}px`,
     paddingLeft: 6,
     paddingRight: 6,
-    fontSize: 11,
+    fontSize: 14,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     cursor: 'pointer',
     display: 'grid',
     gridTemplateColumns: `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT}`,
     gap: 0,
     columnGap: 0,
   },
-  id: { ...CELL, color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
-  gene: { ...CELL, color: '#e0e0e0', textAlign: 'center' as const },
-  fitness: { ...CELL, color: '#ffd700', whiteSpace: 'nowrap' as const, textAlign: 'right' as const },
-  bornGen: { ...CELL, color: '#888', whiteSpace: 'nowrap' as const, textAlign: 'center' as const, fontSize: 10 },
-  partnerCount: { ...CELL, color: '#8888cc', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, fontSize: 10, borderRight: 'none' },
+  id: { ...CELL, color: colors.text.secondary, whiteSpace: 'pre' as const, textAlign: 'center' as const },
+  gene: { ...CELL, color: colors.text.primary, textAlign: 'center' as const },
+  fitness: { ...CELL, color: colors.accent.gold, whiteSpace: 'nowrap' as const, textAlign: 'center' as const },
+  bornGen: { ...CELL, color: colors.text.secondary, whiteSpace: 'nowrap' as const, textAlign: 'center' as const, fontSize: 13 },
+  partnerCount: { ...CELL, color: colors.accent.lavender, whiteSpace: 'nowrap' as const, textAlign: 'center' as const, fontSize: 13, borderRight: 'none' },
   empty: {
     minHeight: MIN_CONTAINER_HEIGHT,
     flexGrow: 1,
@@ -882,10 +893,10 @@ const vlStyles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#555',
-    backgroundColor: '#12122a',
+    color: colors.text.disabled,
+    backgroundColor: colors.bg.raised,
     borderRadius: 4,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
   },
 };
 
@@ -972,26 +983,33 @@ export const BreedingListboxes: React.FC<Props> = ({
 
   const childRecords = useMemo(() => {
     if (!breedingData || selectedCategory !== 'Children') return [];
-    const { aParents, bParents, crossoverPoints } = breedingData;
+    const { aParents, bParents, aChildren, bChildren, crossoverPoints } = breedingData;
     const out: ChildRecord[] = [];
+    // Build lookup from child id → { pairIndex, isChildA }
+    const childIndex = new Map<number, { pairIndex: number; isChildA: boolean }>();
+    for (let i = 0; i < aChildren.length; i++) {
+      childIndex.set(aChildren[i]!.id, { pairIndex: i, isChildA: true });
+      childIndex.set(bChildren[i]!.id, { pairIndex: i, isChildA: false });
+    }
     for (const child of breedingData.allChildren) {
-      const pairIndex = Math.floor(child.id / 2);
-      const pA = aParents[pairIndex];
-      const pB = bParents[pairIndex];
-      const cp = crossoverPoints[pairIndex];
+      const info = childIndex.get(child.id);
+      if (!info) continue;
+      const pA = aParents[info.pairIndex];
+      const pB = bParents[info.pairIndex];
+      const cp = crossoverPoints[info.pairIndex];
       if (pA && pB && cp !== undefined) {
-        out.push({ child, parentA: pA, parentB: pB, crossoverPoint: cp });
+        out.push({ child, parentA: pA, parentB: pB, crossoverPoint: cp, isChildA: info.isChildA });
       }
     }
     return out;
   }, [breedingData, selectedCategory]);
 
   return (
-    <div style={styles.panel}>
-      <style>{'.vl-row:not(.vl-selected):hover { background-color: #24244a !important; }'}</style>
-      <h3 style={styles.title} data-help="Raw breeding data showing parents and children from each generation">Population</h3>
-      <div style={styles.sectionTitleRow}>
-        <div style={{ ...styles.sectionTitle, borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}
+    <div style={bStyles.panel}>
+      <style>{`.vl-row:not(.vl-selected):hover { background-color: ${colors.interactive.hover} !important; }`}</style>
+      <h3 style={bStyles.title} data-help="Raw breeding data showing parents and children from each generation">Population</h3>
+      <div style={bStyles.sectionTitleRow}>
+        <div style={{ ...bStyles.sectionTitle, borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}
           data-help={CATEGORY_HELP[selectedCategory]}
         >
           View
@@ -1000,18 +1018,18 @@ export const BreedingListboxes: React.FC<Props> = ({
           <button
             onClick={() => generation > 0 && setDropdownOpen((o) => !o)}
             disabled={generation === 0}
-            style={{ ...styles.presetSelect, opacity: generation > 0 ? 1 : 0.4 }}
+            style={{ ...bStyles.presetSelect, opacity: generation > 0 ? 1 : 0.4 }}
           >
             {selectedCategory} ({formatCoordinate(categoryToOrigin(selectedCategory, generation).coordinate)}) &#x25BE;
           </button>
           {dropdownOpen && (
-            <div style={styles.dropdownMenu}>
+            <div style={bStyles.dropdownMenu}>
               {(['Eligible parents', 'Actual parents', 'Children', 'Mutations'] as CategoryKey[]).map((cat) => (
                 <div
                   key={cat}
                   style={{
-                    ...styles.dropdownItem,
-                    ...(cat === selectedCategory ? styles.dropdownItemActive : {}),
+                    ...bStyles.dropdownItem,
+                    ...(cat === selectedCategory ? bStyles.dropdownItemActive : {}),
                   }}
                   data-help={CATEGORY_HELP[cat]}
                   onClick={() => { onCategoryChange(cat); setDropdownOpen(false); }}
@@ -1057,12 +1075,12 @@ export const BreedingListboxes: React.FC<Props> = ({
   );
 };
 
-const styles: Record<string, React.CSSProperties> = {
+const bStyles: Record<string, React.CSSProperties> = {
   panel: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: colors.bg.surface,
     borderRadius: 8,
     padding: 16,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     flex: 1,
     minHeight: 0,
     display: 'flex',
@@ -1076,22 +1094,26 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 12px 0',
     fontSize: 14,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  count: {
+    color: colors.text.tertiary,
+    fontWeight: 'normal',
   },
   sectionTitleRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #2a2a4a',
+    borderBottom: `1px solid ${colors.border.subtle}`,
     paddingBottom: 2,
     marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#6c5ce7',
+    color: colors.accent.purple,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -1099,9 +1121,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 6px',
     fontSize: 9,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     cursor: 'pointer',
     flexShrink: 0,
@@ -1111,8 +1133,8 @@ const styles: Record<string, React.CSSProperties> = {
     top: '100%',
     right: 0,
     marginTop: 2,
-    backgroundColor: '#2a2a4a',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     zIndex: 10,
     minWidth: 120,
@@ -1121,11 +1143,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 8px',
     fontSize: 9,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
   },
   dropdownItemActive: {
-    backgroundColor: '#3a3a5a',
+    backgroundColor: colors.border.strong,
   },
 };

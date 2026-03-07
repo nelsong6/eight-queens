@@ -17,6 +17,7 @@ export function createRandomIndividual(id: number): Individual {
   }
   return {
     id,
+    localIndex: id,
     solution,
     fitness: assessFitness(solution),
     bornGeneration: 0,
@@ -27,14 +28,20 @@ export function createRandomIndividual(id: number): Individual {
 /**
  * Create an individual from an existing solution array.
  */
-export function createIndividual(id: number, solution: number[], bornGeneration?: number): Individual {
+export function createIndividual(id: number, solution: number[], bornGeneration?: number, localIndex?: number): Individual {
   return {
     id,
+    localIndex: localIndex ?? id,
     solution: [...solution],
     fitness: assessFitness(solution),
     bornGeneration,
     age: 0 as Age,
   };
+}
+
+/** Format an individual's ID for display as gen.localIndex (e.g. "3.42", "-1.5"). */
+export function formatId(ind: Individual): string {
+  return `${ind.bornGeneration ?? 0}.${ind.localIndex}`;
 }
 
 /**
@@ -43,6 +50,7 @@ export function createIndividual(id: number, solution: number[], bornGeneration?
 export function cloneIndividual(ind: Individual): Individual {
   return {
     id: ind.id,
+    localIndex: ind.localIndex,
     solution: [...ind.solution],
     fitness: ind.fitness,
     bornGeneration: ind.bornGeneration,
@@ -95,7 +103,7 @@ export function createSeededIndividual(id: number, seed: number): Individual {
   for (let i = 0; i < BOARD_SIZE; i++) {
     solution.push(seededInt(0, 7));
   }
-  return { id, solution, fitness: assessFitness(solution), bornGeneration: 0, age: 1 as Age };
+  return { id, localIndex: id, solution, fitness: assessFitness(solution), bornGeneration: 0, age: 1 as Age };
 }
 
 /**

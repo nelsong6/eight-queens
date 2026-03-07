@@ -1,5 +1,6 @@
 import React from 'react';
 import type { GenerationResult } from '../../engine/types';
+import { formatId } from '../../engine/individual';
 
 interface Props {
   result: GenerationResult;
@@ -57,7 +58,7 @@ export const MutationPhase: React.FC<Props> = ({ result }) => {
           <div style={styles.examplesList}>
             {examples.map((ind, i) => (
               <div key={i} style={styles.exampleRow}>
-                <span style={styles.exampleId}>[{ind.id}]</span>
+                <span style={styles.exampleId}>[{formatId(ind)}]</span>
                 <span style={styles.exampleSolution}>
                   {ind.solution.map((gene, gi) => (
                     <span key={gi} style={styles.exampleGene}>{gene}</span>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { colors } from '../colors';
 
 const DEFAULT_TEXT = 'Hover over any control to see what it does.';
 
@@ -60,8 +61,8 @@ export const HelpBar: React.FC = () => {
 const styles: Record<string, React.CSSProperties> = {
   bar: {
     height: 28,
-    backgroundColor: '#12122a',
-    borderBottom: '1px solid #2a2a4a',
+    backgroundColor: colors.bg.raised,
+    borderBottom: `1px solid ${colors.border.subtle}`,
     display: 'flex',
     alignItems: 'center',
     paddingLeft: 24,
@@ -70,7 +71,7 @@ const styles: Record<string, React.CSSProperties> = {
   pin: {
     fontSize: 9,
     fontFamily: 'monospace',
-    color: '#ffb347',
+    color: colors.accent.gold,
     marginRight: 8,
     fontWeight: 700,
     letterSpacing: 1,
@@ -78,7 +79,7 @@ const styles: Record<string, React.CSSProperties> = {
   text: {
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#888',
+    color: colors.text.tertiary,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',

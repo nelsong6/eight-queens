@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { AlgorithmConfig, StepStatistics, CumulativeStatistics } from '../engine/types';
 import { DEFAULT_CONFIG, MAX_FITNESS } from '../engine/types';
 import type { Preset } from '../data/presets';
+import { colors } from '../colors';
 
 /** Makes a number input respond to mousewheel on hover (no focus required). */
 function useWheelInput(
@@ -43,12 +44,17 @@ interface Props {
   avgFitness: number;
   solved: boolean;
   statusMessage?: { label: string; value: string } | null;
+  onStatusClick?: () => void;
 }
 
-const StatRow: React.FC<{ label: string; value: string; help?: string }> = ({ label, value, help }) => (
-  <div style={styles.statRow} data-help={help}>
-    <span style={styles.statLabel}>{label}</span>
-    <span style={styles.statValue}>{value}</span>
+const StatRow: React.FC<{ label: string; value: string; help?: string; onClick?: () => void }> = ({ label, value, help, onClick }) => (
+  <div
+    style={{ ...styles.statRow, ...(onClick ? { cursor: 'pointer' } : undefined) }}
+    data-help={help}
+    onClick={onClick}
+  >
+    <span style={{ ...styles.statLabel, ...(onClick ? { textDecoration: 'underline', textDecorationStyle: 'dotted' as const } : undefined) }}>{label}</span>
+    <span style={{ ...styles.statValue, ...(onClick ? { textDecoration: 'underline', textDecorationStyle: 'dotted' as const } : undefined) }}>{value}</span>
   </div>
 );
 
@@ -64,6 +70,7 @@ export const ConfigPanel: React.FC<Props> = ({
   avgFitness,
   solved,
   statusMessage,
+  onStatusClick,
 }) => {
   const isConfig = sessionPhase === 'config';
   const [populationSize, setPopulationSize] = useState(100);
@@ -242,7 +249,7 @@ export const ConfigPanel: React.FC<Props> = ({
           help="Current state of the algorithm — Ready, Running, or Solved"
         />
         {statusMessage && (
-          <StatRow label={statusMessage.label} value={statusMessage.value || '\u00A0'} />
+          <StatRow label={statusMessage.label} value={statusMessage.value || '\u00A0'} onClick={onStatusClick} />
         )}
       </div>
 
@@ -326,10 +333,10 @@ export const ConfigPanel: React.FC<Props> = ({
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: colors.bg.surface,
     borderRadius: 8,
     padding: 16,
-    border: '1px solid #2a2a4a',
+    border: `1px solid ${colors.border.subtle}`,
     flex: 1,
     minWidth: 180,
     minHeight: 0,
@@ -340,7 +347,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 12px 0',
     fontSize: 14,
     fontFamily: 'monospace',
-    color: '#aaa',
+    color: colors.text.secondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -348,9 +355,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 6px',
     fontSize: 9,
     fontFamily: 'monospace',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     cursor: 'pointer',
     flexShrink: 0,
@@ -360,8 +367,8 @@ const styles: Record<string, React.CSSProperties> = {
     top: '100%',
     right: 0,
     marginTop: 2,
-    backgroundColor: '#2a2a4a',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     zIndex: 10,
     minWidth: 120,
@@ -370,12 +377,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 8px',
     fontSize: 9,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
   },
   dropdownItemActive: {
-    backgroundColor: '#3a3a5a',
+    backgroundColor: colors.border.strong,
   },
   section: {
     marginBottom: 10,
@@ -384,18 +391,18 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #2a2a4a',
+    borderBottom: `1px solid ${colors.border.subtle}`,
     paddingBottom: 2,
     marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#6c5ce7',
+    color: colors.accent.purple,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 4,
-    borderBottom: '1px solid #2a2a4a',
+    borderBottom: `1px solid ${colors.border.subtle}`,
     paddingBottom: 2,
   },
   statRow: {
@@ -408,12 +415,12 @@ const styles: Record<string, React.CSSProperties> = {
   statLabel: {
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#888',
+    color: colors.text.tertiary,
   },
   statValue: {
     fontSize: 11,
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     fontWeight: 'bold',
     minWidth: 70,
     textAlign: 'right' as const,
@@ -424,9 +431,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontFamily: 'monospace',
     fontWeight: 'bold',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     textAlign: 'right' as const,
   },
@@ -436,9 +443,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontFamily: 'monospace',
     fontWeight: 'bold',
-    backgroundColor: '#2a2a4a',
-    color: '#e0e0e0',
-    border: '1px solid #3a3a5a',
+    backgroundColor: colors.bg.overlay,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.strong}`,
     borderRadius: 3,
     textAlign: 'right' as const,
   },
@@ -446,7 +453,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 6,
     fontSize: 10,
     fontFamily: 'monospace',
-    color: '#ccc',
+    color: colors.text.secondary,
     lineHeight: 1.3,
     whiteSpace: 'pre-line' as const,
   },
@@ -458,7 +465,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontFamily: 'monospace',
     fontWeight: 'bold',
-    color: '#e0e0e0',
+    color: colors.text.primary,
     display: 'flex',
     alignItems: 'center',
     gap: 2,

@@ -70,10 +70,10 @@ export class AlgorithmRunner {
    * Run a single generation step.
    * Returns the generation result, or null if already solved.
    */
-  runGeneration(): GenerationResult | null {
+  runGeneration(skipPipeline = false): GenerationResult | null {
     if (this._solved) return null;
 
-    const result = this.puzzle.step();
+    const result = this.puzzle.step(skipPipeline);
     if (!result) return null;
 
     this._generation = result.generationNumber;
@@ -96,7 +96,8 @@ export class AlgorithmRunner {
     let lastResult: GenerationResult | null = null;
 
     for (let i = 0; i < count; i++) {
-      const result = this.puzzle.step();
+      const isLast = i === count - 1;
+      const result = this.puzzle.step(/* skipPipeline */ !isLast);
       if (!result) break;
 
       this._generation = result.generationNumber;

@@ -11,9 +11,13 @@
 import {
   AlgorithmConfig,
   Individual,
+  Age,
   MutationRecord,
   GenerationResult,
   GenerationBreedingData,
+  GenerationPipeline,
+  PipelineSnapshot,
+  PipelineOp,
   StepStatistics,
   MAX_FITNESS,
 } from './types';
@@ -37,12 +41,16 @@ export class QueensPuzzle {
   private _solutionIndividual: Individual | null;
   private _populationSeed: number;
   private _seededCount: number; // how many individuals have been seeded so far
+  private _nextId: number; // monotonically increasing ID counter
 
   // Visualization state: last breeding pair
   private _lastParentA: Individual | null;
   private _lastParentB: Individual | null;
   private _lastChildA: Individual | null;
   private _lastChildB: Individual | null;
+
+  // Pre-mutation chromosome snapshots (captured after crossover, before mutate())
+  private _preMutationChildren: Individual[];
 
   // Full breeding data (all pairs per generation)
   private _aParents: Individual[];
@@ -74,6 +82,7 @@ export class QueensPuzzle {
     this._mutations = [];
     this._mutationRecords = [];
     this._crossoverPoints = [];
+    this._preMutationChildren = [];
 
     // Eagerly create initial random population so it's visible at gen 0
     this._populationSeed = Math.floor(Math.random() * 0xFFFFFFFF);
@@ -90,11 +99,13 @@ export class QueensPuzzle {
     this._seedParents = [];
     for (let i = 0; i < this.config.populationSize; i++) {
       const sp = createSeededIndividual(i + this.config.populationSize, this._populationSeed);
-      sp.bornGeneration = 0;
+      sp.localIndex = i;
+      sp.bornGeneration = -1; // marker for synthetic seed parent
       sp.age = 2; // adults (will become elders at gen 1 aging)
       this._seedParents.push(sp);
     }
     this._seedParents.sort((a, b) => b.fitness - a.fitness);
+    this._nextId = this.config.populationSize * 2; // after initial pop + seed parents
 
     let totalFitness = 0;
     for (const parent of this.parents) {
@@ -119,17 +130,29 @@ export class QueensPuzzle {
    *
    * Returns a GenerationResult with stats and visualization data.
    */
-  step(): GenerationResult | null {
+  step(skipPipeline = false): GenerationResult | null {
     if (this._solved) return null;
+
+    // Capture pre-aging state for pipeline op 0 before/transform (skipped when not needed)
+    const preAgingOldParents = skipPipeline ? [] : (this._generation === 0)
+      ? this._seedParents.map(cloneIndividual)
+      : this.parents.map(cloneIndividual);
+    const preAgingPrevChildren = skipPipeline ? [] : (this._generation === 0)
+      ? this.parents.map(cloneIndividual)
+      : this.children.map(cloneIndividual);
 
     // Step 1: Prepare population
     this.prepareToStep();
+
+    // Capture post-aging state for pipeline op 0 after / op 1 before
+    const retiredParents = skipPipeline ? [] : preAgingOldParents.map(ind => ({ ...ind, age: 3 as Age }));
+    const eligibleAdultsSnap = skipPipeline ? [] : this.parents.map(cloneIndividual);
 
     // Step 2: Build selection probability list
     const probabilityList = this.buildProbabilityList();
 
     // Step 3: Breed children
-    const mutationCount = this.breedChildren(probabilityList);
+    const mutationCount = this.breedChildren(probabilityList, skipPipeline);
 
     this._generation++;
 
@@ -180,17 +203,74 @@ export class QueensPuzzle {
     this._mutations.sort((a, b) => b.fitness - a.fitness);
 
     const breedingData: GenerationBreedingData = {
-      aParents: this._aParents,
-      bParents: this._bParents,
-      aChildren: this._aChildren,
-      bChildren: this._bChildren,
-      actualParents,
-      mutations: this._mutations,
-      mutationRecords: this._mutationRecords,
-      eligibleParents: [...this.parents],
-      allChildren: [...this.children],
-      crossoverPoints: this._crossoverPoints,
+      aParents: this._aParents.map(cloneIndividual),
+      bParents: this._bParents.map(cloneIndividual),
+      aChildren: this._aChildren.map(cloneIndividual),
+      bChildren: this._bChildren.map(cloneIndividual),
+      actualParents: actualParents.map(cloneIndividual),
+      mutations: this._mutations.map(cloneIndividual),
+      mutationRecords: this._mutationRecords.map(r => ({ ...r, individual: cloneIndividual(r.individual) })),
+      eligibleParents: this.parents.map(cloneIndividual),
+      allChildren: this.children.map(cloneIndividual),
+      crossoverPoints: [...this._crossoverPoints],
     };
+
+    // Assemble full pipeline snapshot (skipped for intermediate bulk steps)
+    const emptyOps = (): GenerationPipeline => ({ ops: Array.from({ length: 7 }, (): PipelineOp => [{}, {}, {}]) });
+
+    let pipeline: GenerationPipeline;
+    if (skipPipeline) {
+      pipeline = emptyOps();
+    } else {
+      const selectedIds = new Set(actualParents.map(p => p.id));
+      const unselected = eligibleAdultsSnap.filter(p => !selectedIds.has(p.id));
+      const matedParents = actualParents.map(cloneIndividual);
+      const postMutationChromosomes = this.children.map(cloneIndividual);
+
+      // Helper: deep-clone a snapshot so each boundary is independently mutable
+      const cloneSnap = (s: PipelineSnapshot): PipelineSnapshot =>
+        Object.fromEntries(
+          Object.entries(s).map(([k, v]) => [k, (v as Individual[]).map(cloneIndividual)])
+        ) as PipelineSnapshot;
+
+      // The transform snapshot (z=1) is seeded from before but is its own deep clone —
+      // future work can populate it with transition-specific data independently.
+      const makeOp = (before: PipelineSnapshot, after: PipelineSnapshot): PipelineOp =>
+        [before, cloneSnap(before), after];
+
+      pipeline = {
+        ops: [
+          makeOp( // op 0: Age individuals
+            { oldParents: preAgingOldParents, previousChildren: preAgingPrevChildren },
+            { retiredParents, eligibleAdults: eligibleAdultsSnap },
+          ),
+          makeOp( // op 1: Remove elders
+            { retiredParents: retiredParents.map(cloneIndividual), eligibleAdults: eligibleAdultsSnap.map(cloneIndividual) },
+            { eligibleAdults: eligibleAdultsSnap.map(cloneIndividual) },
+          ),
+          makeOp( // op 2: Select breeding pairs
+            { eligibleAdults: eligibleAdultsSnap.map(cloneIndividual) },
+            { selectedPairs: actualParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
+          ),
+          makeOp( // op 3: Mark pairs as mated
+            { selectedPairs: actualParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
+          ),
+          makeOp( // op 4: Generate chromosomes
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: this._preMutationChildren },
+          ),
+          makeOp( // op 5: Apply mutations
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: this._preMutationChildren.map(cloneIndividual) },
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: postMutationChromosomes },
+          ),
+          makeOp( // op 6: Realize children
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: postMutationChromosomes.map(cloneIndividual) },
+            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), finalChildren: postMutationChromosomes.map(cloneIndividual) },
+          ),
+        ],
+      };
+    }
 
     return {
       generationNumber: this._generation,
@@ -208,6 +288,7 @@ export class QueensPuzzle {
       lastChildB: this._lastChildB,
       breedingData,
       stepStatistics,
+      pipeline,
     };
   }
 
@@ -231,11 +312,16 @@ export class QueensPuzzle {
       this._avgFitnessEligibleParents = this.parents.length > 0
         ? totalFitness / this.parents.length
         : 0;
+    } else {
+      // Gen 0: age initial population (child→adult), matching op 0 "Age individuals"
+      for (const parent of this.parents) {
+        parent.age = 2; // adult
+      }
     }
-    // Gen 0: parents already created and sorted in constructor
 
     // Reset children and breeding lists
     this.children = [];
+    this._preMutationChildren = [];
     this._lastParentA = null;
     this._lastParentB = null;
     this._lastChildA = null;
@@ -303,7 +389,7 @@ export class QueensPuzzle {
    * Create the next generation through crossover and mutation.
    * Returns the number of mutations that occurred.
    */
-  private breedChildren(probabilityList: number[]): number {
+  private breedChildren(probabilityList: number[], skipPipeline = false): number {
     let mutationCount = 0;
     const targetSize = this.config.populationSize;
 
@@ -325,11 +411,13 @@ export class QueensPuzzle {
 
       // Create children via crossover
       const childA = cloneIndividual(parentA);
-      childA.id = this.children.length;
+      childA.id = this._nextId++;
+      childA.localIndex = this.children.length;
       childA.bornGeneration = this._generation + 1;
       childA.age = 1; // child
       const childB = cloneIndividual(parentB);
-      childB.id = this.children.length + 1;
+      childB.id = this._nextId++;
+      childB.localIndex = this.children.length + 1;
       childB.bornGeneration = this._generation + 1;
       childB.age = 1; // child
 
@@ -348,6 +436,14 @@ export class QueensPuzzle {
       // Recalculate fitness after crossover
       childA.fitness = assessFitness(childA.solution);
       childB.fitness = assessFitness(childB.solution);
+
+      // Snapshot pre-mutation state (after crossover, before mutate modifies in-place)
+      if (!skipPipeline) {
+        this._preMutationChildren.push(cloneIndividual(childA));
+        if (this.children.length + 1 < targetSize) {
+          this._preMutationChildren.push(cloneIndividual(childB));
+        }
+      }
 
       // Apply mutation
       const mutA = mutate(childA, this.config.mutationRate);
@@ -429,6 +525,21 @@ export class QueensPuzzle {
    */
   getInitialResult(): GenerationResult {
     const best = this.parents[0]!; // already sorted descending
+    // Gen 0 micro mode starts at 0.6.2 — pre-aging pools are never visited.
+    // Stub the pipeline with the final state at op 6 after (the initial population as children).
+    const initialChildren = this.parents.map(cloneIndividual);
+    const emptyOp = (): PipelineOp => [{}, {}, {}];
+    const pipeline: GenerationPipeline = {
+      ops: [
+        emptyOp(), // op 0
+        emptyOp(), // op 1
+        emptyOp(), // op 2
+        emptyOp(), // op 3
+        emptyOp(), // op 4
+        emptyOp(), // op 5
+        [{}, {}, { finalChildren: initialChildren }], // op 6 after: initial pop as final children
+      ],
+    };
     return {
       generationNumber: 0,
       bestFitness: best.fitness,
@@ -450,7 +561,7 @@ export class QueensPuzzle {
         mutations: [],
         mutationRecords: [],
         eligibleParents: [...this._seedParents],
-        allChildren: [...this.parents],
+        allChildren: this.parents.map(cloneIndividual),
         crossoverPoints: [],
       },
       stepStatistics: {
@@ -464,6 +575,7 @@ export class QueensPuzzle {
         avgFitnessChildren: this._avgFitnessEligibleParents,
         mutationCount: 0,
       },
+      pipeline,
     };
   }
 
@@ -497,11 +609,13 @@ export class QueensPuzzle {
     this._seedParents = [];
     for (let i = 0; i < newSize; i++) {
       const sp = createSeededIndividual(i + newSize, this._populationSeed);
-      sp.bornGeneration = 0;
+      sp.localIndex = i;
+      sp.bornGeneration = -1; // marker for synthetic seed parent
       sp.age = 2; // adults (will become elders at gen 1 aging)
       this._seedParents.push(sp);
     }
     this._seedParents.sort((a, b) => b.fitness - a.fitness);
+    this._nextId = newSize * 2; // after initial pop + seed parents
 
     let totalFitness = 0;
     for (const parent of this.parents) {
