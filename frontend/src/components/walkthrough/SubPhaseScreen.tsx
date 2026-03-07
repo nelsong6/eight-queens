@@ -1,6 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { Individual, Age, GenerationResult, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
 import { getOp, getPoolsAtCoordinate, poolDisplayName, getTransformDescription, GENERATION_OPS, OPS_PER_GENERATION, SCREENS_PER_OP } from '../../engine/time-coordinate';
+import {
+  createColumnHelper,
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getFacetedUniqueValues,
+  type SortingState,
+  type ColumnFiltersState,
+} from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 const AGE_COLORS: Record<Age, string> = { 0: '#888', 1: '#3498db', 2: '#2ecc71', 3: '#e67e22' };
 
@@ -10,7 +21,6 @@ const COL_GENE = '22px';
 const COL_FIT = '24px';
 const COL_AGE = '24px';
 const ITEM_HEIGHT = 22;
-const MAX_VISIBLE = 200;
 
 const CELL: React.CSSProperties = {
   borderRight: '1px solid #232346',
@@ -18,8 +28,6 @@ const CELL: React.CSSProperties = {
 };
 
 const GRID_COLS = `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT} ${COL_AGE}`;
-
-type ViewMode = string; // pool name, or 'all' | 'age' | 'fitness' | 'removed' | 'survived'
 
 interface Props {
   coordinate: TimeCoordinate;
@@ -144,18 +152,6 @@ export const PipelineProgress: React.FC<{ coordinate: TimeCoordinate; onNavigate
   );
 };
 
-/** Determine if a pool is being removed (red) or added (green) at a coordinate. */
-function getPoolRole(pool: PoolName, tc: TimeCoordinate): 'remove' | 'add' | null {
-  const { operation: y, boundary: z } = tc;
-
-  // Retired parents are marked for removal at op 1 transform/after, not at before (they haven't been removed yet)
-  if (pool === 'retiredParents' && (y > 1 || (y === 1 && z > 0))) return 'remove';
-  // Chromosomes are newly generated
-  if (pool === 'chromosomes' && y === 4 && z === 1) return 'add';
-
-  return null;
-}
-
 /** Resolve a pool name to actual individuals from the generation result. */
 function resolvePool(pool: PoolName, result: GenerationResult, previousResult: GenerationResult | null): Individual[] {
   const bd = result.breedingData;
@@ -262,12 +258,72 @@ const TransformView: React.FC<{
   );
 };
 
-/** Renders a grid table of individuals matching BreedingListboxes style. */
+const columnHelper = createColumnHelper<Individual>();
+
+const columns = [
+  columnHelper.accessor('id', {
+    header: '#',
+    size: 36,
+    enableSorting: true,
+    enableColumnFilter: false,
+  }),
+  ...Array.from({ length: 8 }, (_, i) =>
+    columnHelper.accessor(row => row.solution[i], {
+      id: `gene${i}`,
+      header: () => i === 0 ? '\uD83E\uDDEC' : '',
+      size: 22,
+      enableSorting: i === 0,
+      enableColumnFilter: false,
+    })
+  ),
+  columnHelper.accessor('fitness', {
+    header: '\uD83C\uDFC5',
+    size: 24,
+    enableSorting: true,
+    enableColumnFilter: false,
+  }),
+  columnHelper.accessor('age', {
+    header: '\uD83D\uDC23',
+    size: 24,
+    enableSorting: true,
+    enableColumnFilter: true,
+    filterFn: 'equals',
+  }),
+];
+
+/** Renders a virtualized, sortable grid table of individuals using TanStack Table. */
 const IndividualList: React.FC<{
   individuals: Individual[];
   onClickItem: (ind: Individual) => void;
-  maxVisible?: number;
-}> = ({ individuals, onClickItem, maxVisible = MAX_VISIBLE }) => {
+  sorting: SortingState;
+  onSortingChange: React.Dispatch<React.SetStateAction<SortingState>>;
+  columnFilters: ColumnFiltersState;
+  onColumnFiltersChange: React.Dispatch<React.SetStateAction<ColumnFiltersState>>;
+}> = ({ individuals, onClickItem, sorting, onSortingChange, columnFilters, onColumnFiltersChange }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const table = useReactTable({
+    data: individuals,
+    columns,
+    state: { sorting, columnFilters },
+    onSortingChange,
+    onColumnFiltersChange,
+    enableSortingRemoval: false,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+  });
+
+  const { rows } = table.getRowModel();
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ITEM_HEIGHT,
+    overscan: 5,
+  });
+
   const idWidth = useMemo(() => {
     let maxId = 0;
     for (const ind of individuals) if (ind.id > maxId) maxId = ind.id;
@@ -277,82 +333,96 @@ const IndividualList: React.FC<{
   if (individuals.length === 0) {
     return <div style={styles.emptyPool}>Empty</div>;
   }
+
+  const idHeader = table.getColumn('id')!;
+  const gene0Header = table.getColumn('gene0')!;
+  const fitnessHeader = table.getColumn('fitness')!;
+  const ageHeader = table.getColumn('age')!;
+  const idSorted = idHeader.getIsSorted();
+  const gene0Sorted = gene0Header.getIsSorted();
+  const fitnessSorted = fitnessHeader.getIsSorted();
+  const ageSorted = ageHeader.getIsSorted();
+
   return (
     <div style={gridStyles.wrapper}>
       <div style={gridStyles.headerRow}>
-        <span style={gridStyles.headerCell}>#</span>
-        <span style={{ gridColumn: '2', ...gridStyles.headerCell }}>{'\uD83E\uDDEC'}</span>
-        <span style={{ gridColumn: '10', ...gridStyles.headerCell }}>{'\uD83C\uDFC5'}</span>
-        <span style={{ gridColumn: '11', ...gridStyles.headerCell }}>{'\uD83D\uDC23'}</span>
+        <span
+          data-help="Sort by ID (click to toggle)"
+          onClick={idHeader.getToggleSortingHandler()}
+          style={{
+            ...gridStyles.headerCell,
+            cursor: 'pointer',
+            borderBottom: idSorted ? '2px solid #888' : '2px solid transparent',
+          }}
+        >#</span>
+        <span
+          data-help="Sort by first gene (click to toggle)"
+          onClick={gene0Header.getToggleSortingHandler()}
+          style={{
+            gridColumn: '2',
+            ...gridStyles.headerCell,
+            cursor: 'pointer',
+            borderBottom: gene0Sorted ? '2px solid #888' : '2px solid transparent',
+          }}
+        >{'\uD83E\uDDEC'}</span>
+        <span
+          data-help="Sort by fitness (click to toggle)"
+          onClick={fitnessHeader.getToggleSortingHandler()}
+          style={{
+            gridColumn: '10',
+            ...gridStyles.headerCell,
+            cursor: 'pointer',
+            borderBottom: fitnessSorted ? '2px solid #ffd700' : '2px solid transparent',
+          }}
+        >{'\uD83C\uDFC5'}</span>
+        <span
+          data-help="Sort by age (click to toggle)"
+          onClick={ageHeader.getToggleSortingHandler()}
+          style={{
+            gridColumn: '11',
+            ...gridStyles.headerCell,
+            cursor: 'pointer',
+            borderBottom: ageSorted ? '2px solid #e67e22' : '2px solid transparent',
+          }}
+        >{'\uD83D\uDC23'}</span>
       </div>
-      <div style={gridStyles.scrollContainer}>
-        {individuals.slice(0, maxVisible).map((ind, index) => (
-          <div
-            key={ind.id}
-            className="vl-row"
-            style={{
-              ...gridStyles.row,
-              backgroundColor: index % 2 === 1 ? '#16162e' : 'transparent',
-            }}
-            onClick={() => onClickItem(ind)}
-          >
-            <span style={gridStyles.id}>{String(ind.id).padStart(idWidth)}</span>
-            {ind.solution.map((gene, gi) => (
-              <span key={gi} style={gridStyles.gene}>{gene}</span>
-            ))}
-            <span style={gridStyles.fitness}>{ind.fitness}</span>
-            <span style={{ ...gridStyles.age, color: AGE_COLORS[ind.age] }}>{ind.age}</span>
-          </div>
-        ))}
-        {individuals.length > maxVisible && (
-          <div style={styles.moreItems}>
-            ...and {individuals.length - maxVisible} more
-          </div>
-        )}
+      <div ref={scrollRef} style={gridStyles.scrollContainer}>
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' as const }}>
+          {virtualizer.getVirtualItems().map(virtualRow => {
+            const row = rows[virtualRow.index]!;
+            const ind = row.original;
+            return (
+              <div
+                key={ind.id}
+                className="vl-row"
+                style={{
+                  ...gridStyles.row,
+                  position: 'absolute' as const,
+                  top: virtualRow.start,
+                  width: '100%',
+                  backgroundColor: virtualRow.index % 2 === 1 ? '#16162e' : 'transparent',
+                }}
+                onClick={() => onClickItem(ind)}
+              >
+                <span style={gridStyles.id}>{String(ind.id).padStart(idWidth)}</span>
+                {ind.solution.map((gene, gi) => (
+                  <span key={gi} style={gridStyles.gene}>{gene}</span>
+                ))}
+                <span style={gridStyles.fitness}>{ind.fitness}</span>
+                <span style={{ ...gridStyles.age, color: AGE_COLORS[ind.age] }}>{ind.age}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
+      {rows.length < individuals.length && (
+        <div style={styles.filterCount}>{rows.length} of {individuals.length} shown</div>
+      )}
     </div>
   );
 };
 
-/** Groups individuals by age and returns sorted groups. */
-function groupByAge(individuals: Individual[]): { age: Age; label: string; individuals: Individual[] }[] {
-  const groups: Map<Age, Individual[]> = new Map();
-  for (const ind of individuals) {
-    const list = groups.get(ind.age);
-    if (list) list.push(ind);
-    else groups.set(ind.age, [ind]);
-  }
-  return ([3, 2, 1, 0] as Age[])
-    .filter(age => groups.has(age))
-    .map(age => ({
-      age,
-      label: `AGE ${age}`,
-      individuals: groups.get(age)!.sort((a, b) => b.fitness - a.fitness),
-    }));
-}
-
-/** Groups individuals by fitness range (buckets of 4). */
-function groupByFitness(individuals: Individual[]): { label: string; individuals: Individual[] }[] {
-  const buckets: Map<string, Individual[]> = new Map();
-  for (const ind of individuals) {
-    const lo = Math.floor(ind.fitness / 4) * 4;
-    const hi = Math.min(lo + 3, 28);
-    const key = `${lo}-${hi}`;
-    const list = buckets.get(key);
-    if (list) list.push(ind);
-    else buckets.set(key, [ind]);
-  }
-  return Array.from(buckets.entries())
-    .sort((a, b) => {
-      const aStart = parseInt(a[0]);
-      const bStart = parseInt(b[0]);
-      return bStart - aStart;
-    })
-    .map(([label, inds]) => ({
-      label: `FITNESS ${label}`,
-      individuals: inds.sort((a, b) => b.fitness - a.fitness),
-    }));
-}
+type PoolFilter = PoolName | 'all' | 'removed' | 'survived';
 
 export const SubPhaseScreen: React.FC<Props> = ({
   coordinate,
@@ -365,7 +435,9 @@ export const SubPhaseScreen: React.FC<Props> = ({
 }) => {
   const op = getOp(coordinate.operation);
   const pools = getPoolsAtCoordinate(coordinate);
-  const [viewMode, setViewMode] = useState<ViewMode>(() => pools[0] ?? 'all');
+  const [poolFilter, setPoolFilter] = useState<PoolFilter>(() => pools.length > 1 ? 'all' : (pools[0] ?? 'all'));
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'fitness', desc: true }]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const poolData = useMemo(() => {
     return pools.map(poolName => ({
@@ -374,16 +446,16 @@ export const SubPhaseScreen: React.FC<Props> = ({
     }));
   }, [pools, result, previousResult]);
 
-  // Reset view mode when pools change (new coordinate)
+  // Reset filters when pools change (new coordinate)
   const poolKey = pools.join(',');
   const [prevPoolKey, setPrevPoolKey] = useState(poolKey);
   if (poolKey !== prevPoolKey) {
     setPrevPoolKey(poolKey);
-    setViewMode(pools[0] ?? 'all');
+    setPoolFilter(pools.length > 1 ? 'all' : (pools[0] ?? 'all'));
+    setColumnFilters([]);
   }
 
   const allIndividuals = useMemo(() => {
-    // Deduplicate by id (same individual can appear in multiple pools)
     const seen = new Set<number>();
     const all: Individual[] = [];
     for (const { individuals } of poolData) {
@@ -394,114 +466,146 @@ export const SubPhaseScreen: React.FC<Props> = ({
         }
       }
     }
-    return all.sort((a, b) => b.fitness - a.fitness);
+    return all;
   }, [poolData]);
 
-  // Compute removed/survived by comparing before (boundary 0) vs after (boundary 2) pools
-  const { removedIndividuals, survivedIndividuals, hasTransformDiff } = useMemo(() => {
+  // Compute removed/survived by comparing before vs after pools
+  const { removedIds, survivedIds, hasTransformDiff, removedCount, survivedCount } = useMemo(() => {
     const beforePools = getPoolsAtCoordinate({ ...coordinate, boundary: 0 });
     const afterPools = getPoolsAtCoordinate({ ...coordinate, boundary: 2 });
 
     const collectIds = (poolNames: PoolName[]) => {
       const ids = new Set<number>();
-      const byId = new Map<number, Individual>();
       for (const p of poolNames) {
-        for (const ind of resolvePool(p, result, previousResult)) {
-          ids.add(ind.id);
-          byId.set(ind.id, ind);
-        }
+        for (const ind of resolvePool(p, result, previousResult)) ids.add(ind.id);
       }
-      return { ids, byId };
+      return ids;
     };
 
-    const before = collectIds(beforePools);
-    const after = collectIds(afterPools);
+    const beforeIds = collectIds(beforePools);
+    const afterIds = collectIds(afterPools);
 
-    const removed: Individual[] = [];
-    const survived: Individual[] = [];
-    for (const [id, ind] of before.byId) {
-      if (after.ids.has(id)) survived.push(ind);
-      else removed.push(ind);
+    const removed = new Set<number>();
+    const survived = new Set<number>();
+    for (const id of beforeIds) {
+      if (afterIds.has(id)) survived.add(id);
+      else removed.add(id);
     }
 
-    removed.sort((a, b) => b.fitness - a.fitness);
-    survived.sort((a, b) => b.fitness - a.fitness);
-
     return {
-      removedIndividuals: removed,
-      survivedIndividuals: survived,
-      hasTransformDiff: removed.length > 0,
+      removedIds: removed,
+      survivedIds: survived,
+      hasTransformDiff: removed.size > 0,
+      removedCount: removed.size,
+      survivedCount: survived.size,
     };
   }, [coordinate, result, previousResult]);
 
-  const viewModeOptions = useMemo(() => {
-    const opts: { value: ViewMode; label: string }[] = [];
-    // Each pool as its own option
-    for (const { name, individuals } of poolData) {
-      opts.push({ value: name, label: `${poolDisplayName({ coordinate, pool: name })} (${individuals.length})` });
-    }
-    // "All" only when multiple pools with individuals
-    const populatedPools = poolData.filter(p => p.individuals.length > 0);
-    if (populatedPools.length > 1) {
-      opts.push({ value: 'all', label: `All (${allIndividuals.length})` });
-    }
-    // "By Age" only when there are mixed ages
-    const ages = new Set(allIndividuals.map(ind => ind.age));
-    if (ages.size > 1) {
-      opts.push({ value: 'age', label: 'By Age' });
-    }
-    // "By Fitness" when there's meaningful spread (more than one fitness value)
-    const fitnesses = new Set(allIndividuals.map(ind => ind.fitness));
-    if (fitnesses.size > 1) {
-      opts.push({ value: 'fitness', label: 'By Fitness' });
-    }
-    // "Removed"/"Survived" only when the transform actually removes individuals
-    if (hasTransformDiff) {
-      opts.push({ value: 'removed', label: `Removed (${removedIndividuals.length})` });
-      opts.push({ value: 'survived', label: `Survived (${survivedIndividuals.length})` });
-    }
-    return opts;
-  }, [poolData, pools, coordinate, allIndividuals, hasTransformDiff, removedIndividuals, survivedIndividuals]);
+  // Resolve the displayed individuals based on pool filter
+  const displayedIndividuals = useMemo(() => {
+    if (poolFilter === 'all') return allIndividuals;
+    if (poolFilter === 'removed') return allIndividuals.filter(ind => removedIds.has(ind.id));
+    if (poolFilter === 'survived') return allIndividuals.filter(ind => survivedIds.has(ind.id));
+    const pool = poolData.find(p => p.name === poolFilter);
+    return pool ? pool.individuals : allIndividuals;
+  }, [poolFilter, allIndividuals, poolData, removedIds, survivedIds]);
 
-  const handleClick = (ind: Individual, poolName?: PoolName) => {
-    onSelectIndividual(ind, {
-      coordinate,
-      pool: poolName ?? pools[0] ?? 'eligibleAdults',
+  // Compute age facets from displayed individuals for filter chips
+  const ageFacets = useMemo(() => {
+    const counts = new Map<Age, number>();
+    for (const ind of displayedIndividuals) {
+      counts.set(ind.age, (counts.get(ind.age) ?? 0) + 1);
+    }
+    return counts;
+  }, [displayedIndividuals]);
+
+  const handleClick = (ind: Individual) => {
+    // Determine the best pool for the origin
+    let pool: PoolName = pools[0] ?? 'eligibleAdults';
+    if (poolFilter !== 'all' && poolFilter !== 'removed' && poolFilter !== 'survived') {
+      pool = poolFilter;
+    }
+    onSelectIndividual(ind, { coordinate, pool });
+  };
+
+  // Pool filter chip options
+  const poolChips = useMemo(() => {
+    const chips: { value: PoolFilter; label: string }[] = [];
+    if (pools.length > 1) {
+      chips.push({ value: 'all', label: `All (${allIndividuals.length})` });
+    }
+    for (const { name, individuals } of poolData) {
+      chips.push({ value: name, label: `${poolDisplayName({ coordinate, pool: name })} (${individuals.length})` });
+    }
+    if (hasTransformDiff) {
+      chips.push({ value: 'removed', label: `Removed (${removedCount})` });
+      chips.push({ value: 'survived', label: `Survived (${survivedCount})` });
+    }
+    return chips;
+  }, [pools, poolData, coordinate, allIndividuals, hasTransformDiff, removedCount, survivedCount]);
+
+  // Age filter: toggle an age value in columnFilters
+  const activeAgeFilter = columnFilters.find(f => f.id === 'age')?.value as Age | undefined;
+  const toggleAgeFilter = (age: Age) => {
+    setColumnFilters(prev => {
+      const existing = prev.find(f => f.id === 'age');
+      if (existing && existing.value === age) {
+        return prev.filter(f => f.id !== 'age');
+      }
+      return [...prev.filter(f => f.id !== 'age'), { id: 'age', value: age }];
     });
   };
 
-  // Special rendering for crossover pair browsing (op 4, after)
   const isCrossoverAdd = coordinate.operation === 4 && coordinate.boundary === 2;
   const totalPairs = result.breedingData.aParents.length;
-
   const showLists = coordinate.boundary !== 1;
+  const hasNoData = pools.length === 0 || (displayedIndividuals.length === 0 && poolData.every(p => p.individuals.length === 0));
 
   return (
     <div style={styles.panel}>
       <style>{'.vl-row:not(.vl-selected):hover { background-color: #24244a !important; }'}</style>
       <h3 style={styles.panelTitle} data-help="Population data at each step of the genetic algorithm pipeline">Population</h3>
       <PipelineProgress coordinate={coordinate} onNavigate={onNavigate} />
-      {/* Header */}
       <div style={styles.header}>
         <span style={styles.opCategory}>{op.category}</span>
       </div>
 
-      {/* Transform screen */}
       {coordinate.boundary === 1 && <TransformView coordinate={coordinate} result={result} previousResult={previousResult} />}
 
-      {/* View mode tabs (before/after only) */}
-      {showLists && (
+      {/* Pool filter chips */}
+      {showLists && poolChips.length > 1 && (
         <div style={styles.tabRow}>
-          {viewModeOptions.map(opt => (
+          {poolChips.map(chip => (
             <div
-              key={opt.value}
-              onClick={() => setViewMode(opt.value)}
+              key={chip.value}
+              onClick={() => { setPoolFilter(chip.value); setColumnFilters([]); }}
               style={{
                 ...styles.tab,
-                ...(viewMode === opt.value ? styles.tabActive : {}),
+                ...(poolFilter === chip.value ? styles.tabActive : {}),
               }}
             >
-              {opt.label}
+              {chip.label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Age filter chips — always render row to prevent layout shift */}
+      {showLists && (
+        <div style={{ ...styles.tabRow, minHeight: 26 }}>
+          {([0, 1, 2, 3] as Age[]).filter(age => ageFacets.has(age)).map(age => (
+            <div
+              key={age}
+              data-help={`Filter to age ${age} individuals`}
+              onClick={() => toggleAgeFilter(age)}
+              style={{
+                ...styles.tab,
+                ...(activeAgeFilter === age ? styles.tabActive : {}),
+                color: activeAgeFilter === age ? AGE_COLORS[age] : undefined,
+                borderColor: activeAgeFilter === age ? AGE_COLORS[age] + '88' : undefined,
+              }}
+            >
+              Age {age} ({ageFacets.get(age)})
             </div>
           ))}
         </div>
@@ -530,77 +634,25 @@ export const SubPhaseScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {/* === View: Specific pool === */}
-      {showLists && poolData.some(p => p.name === viewMode) && (() => {
-        const pool = poolData.find(p => p.name === viewMode)!;
-        return (
-          <div style={styles.poolSection}>
-            {pool.individuals.length === 0 ? (
-              <div style={styles.emptyPool}>
-                {(pool.name === 'oldParents' || pool.name === 'retiredParents' || pool.name === 'previousChildren') && !previousResult
-                  ? 'No previous generation data available'
-                  : 'Empty'}
-              </div>
-            ) : (
-              <IndividualList individuals={pool.individuals} onClickItem={ind => handleClick(ind, pool.name)} />
-            )}
-          </div>
-        );
-      })()}
-
-      {/* === View: All === */}
-      {showLists && viewMode === 'all' && (
+      {/* Individual list */}
+      {showLists && displayedIndividuals.length > 0 && (
         <div style={styles.poolSection}>
-          <IndividualList individuals={allIndividuals} onClickItem={ind => handleClick(ind)} />
+          <IndividualList
+            individuals={displayedIndividuals}
+            onClickItem={handleClick}
+            sorting={sorting}
+            onSortingChange={setSorting}
+            columnFilters={columnFilters}
+            onColumnFiltersChange={setColumnFilters}
+          />
         </div>
       )}
 
-      {/* === View: By Age === */}
-      {showLists && viewMode === 'age' && groupByAge(allIndividuals).map(group => (
-        <div key={group.age} style={styles.poolSection}>
-          <div style={{ ...styles.poolHeader, color: AGE_COLORS[group.age] }}>
-            {group.label}
-            <span style={{ ...styles.poolCount, color: AGE_COLORS[group.age] }}>({group.individuals.length})</span>
-          </div>
-          <IndividualList individuals={group.individuals} onClickItem={ind => handleClick(ind)} />
-        </div>
-      ))}
-
-      {/* === View: By Fitness === */}
-      {showLists && viewMode === 'fitness' && groupByFitness(allIndividuals).map(group => (
-        <div key={group.label} style={styles.poolSection}>
-          <div style={styles.poolHeader}>
-            {group.label}
-            <span style={styles.poolCount}>({group.individuals.length})</span>
-          </div>
-          <IndividualList individuals={group.individuals} onClickItem={ind => handleClick(ind)} />
-        </div>
-      ))}
-
-      {/* === View: Removed === */}
-      {showLists && viewMode === 'removed' && (
-        <div style={styles.poolSection}>
-          {removedIndividuals.length === 0 ? (
-            <div style={styles.emptyPool}>No individuals removed</div>
-          ) : (
-            <IndividualList individuals={removedIndividuals} onClickItem={ind => handleClick(ind)} />
-          )}
-        </div>
+      {showLists && displayedIndividuals.length === 0 && !hasNoData && (
+        <div style={styles.emptyPool}>No individuals match the current filter</div>
       )}
 
-      {/* === View: Survived === */}
-      {showLists && viewMode === 'survived' && (
-        <div style={styles.poolSection}>
-          {survivedIndividuals.length === 0 ? (
-            <div style={styles.emptyPool}>No individuals survived</div>
-          ) : (
-            <IndividualList individuals={survivedIndividuals} onClickItem={ind => handleClick(ind)} />
-          )}
-        </div>
-      )}
-
-      {/* No-op message (before/after only) */}
-      {showLists && pools.length === 0 && (
+      {showLists && hasNoData && (
         <div style={styles.noOp}>No population data at this coordinate.</div>
       )}
     </div>
@@ -637,25 +689,7 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
-  coordinate: {
-    color: '#6c5ce7',
-    fontWeight: 'bold',
-  },
   opCategory: {
-  },
-  typeBadge: {
-    padding: '1px 6px',
-    borderRadius: 3,
-    fontSize: 9,
-    fontWeight: 'bold',
-    textTransform: 'uppercase' as const,
-    backgroundColor: '#2a2a4a',
-    color: '#ccc',
-  },
-  opName: {
-    fontSize: 12,
-    color: '#e0e0e0',
-    marginBottom: 8,
   },
   tabRow: {
     display: 'flex',
@@ -704,31 +738,18 @@ const styles: Record<string, React.CSSProperties> = {
   poolSection: {
     marginBottom: 12,
   },
-  poolHeader: {
-    fontSize: 10,
-    color: '#aaa',
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-    marginBottom: 4,
-    display: 'flex',
-    gap: 6,
-    alignItems: 'center',
-  },
-  poolCount: {
-    color: '#666',
-    fontSize: 9,
-  },
   emptyPool: {
     color: '#555',
     fontSize: 10,
     fontStyle: 'italic' as const,
     padding: '4px 8px',
   },
-  moreItems: {
-    color: '#555',
+  filterCount: {
+    color: '#666',
     fontSize: 9,
-    padding: '2px 6px',
+    padding: '4px 6px',
     textAlign: 'center' as const,
+    fontFamily: 'monospace',
   },
   noOp: {
     color: '#555',
@@ -759,9 +780,10 @@ const gridStyles: Record<string, React.CSSProperties> = {
     padding: '0 3px',
     textAlign: 'center' as const,
     color: '#555',
+    borderBottom: '2px solid transparent',
   },
   scrollContainer: {
-    maxHeight: 300,
+    height: 300,
     overflowY: 'auto' as const,
     overflowX: 'hidden' as const,
     backgroundColor: '#12122a',
