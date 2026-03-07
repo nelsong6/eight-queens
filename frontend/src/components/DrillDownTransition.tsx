@@ -16,7 +16,7 @@ export const DrillDownTransition: React.FC<DrillDownTransitionProps> = ({
   const transition = `opacity ${transitionDurationMs}ms ease`;
   // Track layout separately so position swap happens after opacity transition
   const [layoutActive, setLayoutActive] = useState(isActive);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     clearTimeout(timerRef.current);
