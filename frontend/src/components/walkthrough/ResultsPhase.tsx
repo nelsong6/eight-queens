@@ -20,7 +20,7 @@ export const ResultsPhase: React.FC<Props> = ({ result }) => {
       </div>
 
       <div style={styles.statsRow}>
-        <div style={styles.stat} data-help="Highest fitness score achieved this generation — green at 28 means solved">
+        <div style={styles.stat} data-help="Highest fitness score achieved this generation — green at 28 means solved" data-help-glossary="fitness">
           <span style={styles.statLabel}>Best Fitness</span>
           <span style={{
             ...styles.statValue,

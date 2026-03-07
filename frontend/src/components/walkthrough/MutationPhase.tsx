@@ -17,7 +17,7 @@ export const MutationPhase: React.FC<Props> = ({ result }) => {
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title} data-help="Random gene changes are applied to children to maintain genetic diversity">Phase 3: Mutation</div>
+      <div style={styles.title} data-help="Random gene changes are applied to children to maintain genetic diversity" data-help-glossary="mutation">Phase 3: Mutation</div>
       <div style={styles.subtitle} data-help="One random gene is changed to a random value, helping the population escape local optima">Random Gene Mutation</div>
 
       <div style={styles.explanation}>

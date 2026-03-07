@@ -47,7 +47,7 @@ const THROTTLE_INTERVAL = 150;   // ms between visual updates in throttled tier
 // Component
 // ---------------------------------------------------------------------------
 
-const CELL_SIZE = 48;
+const CELL_SIZE = 42;
 const BOARD_PX = CELL_SIZE * BOARD_SIZE;
 const PAD = CELL_SIZE * 0.08;
 const SPRITE_SIZE = CELL_SIZE - PAD * 2;
@@ -171,7 +171,7 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
   const isSolved = displayedIndividual?.fitness === MAX_FITNESS;
 
   return (
-    <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%', justifyContent: 'center' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs">
+    <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%', justifyContent: 'center' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs" data-help-glossary="attacking-queens">
       <div style={{
         ...styles.boardContainer,
         transform: `scale(${boardScale})`,
@@ -202,7 +202,7 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
               transition: transitionMs > 0 ? `top ${transitionMs}ms ease-in-out` : 'none',
               pointerEvents: 'none',
               filter: isSolved
-                ? 'brightness(0.85) sepia(1) hue-rotate(80deg) saturate(2.5)'
+                ? 'brightness(1.05) sepia(1) hue-rotate(120deg) saturate(2.5)'
                 : 'none',
             }}
           />

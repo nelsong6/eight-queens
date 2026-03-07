@@ -25,7 +25,7 @@ export const SelectionPhase: React.FC<Props> = ({ result }) => {
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title} data-help="The algorithm picks parents from the population using fitness-proportionate selection">Phase 1: Selection</div>
+      <div style={styles.title} data-help="The algorithm picks parents from the population using fitness-proportionate selection" data-help-glossary="selection">Phase 1: Selection</div>
       <div style={styles.subtitle} data-help="Individuals with higher fitness get more 'slots' on the wheel and are more likely to be chosen">Fitness-Proportionate (Roulette Wheel) Selection</div>
 
       <div style={styles.explanation}>
@@ -44,7 +44,7 @@ export const SelectionPhase: React.FC<Props> = ({ result }) => {
           <span style={styles.statValue}>{hasData ? actual.toLocaleString() : dash}</span>
           <span style={styles.statDetail}>{hasData ? `avg fitness ${avgActual.toFixed(1)}` : '\u00A0'}</span>
         </div>
-        <div style={styles.stat} data-help="Difference in avg fitness between selected and eligible — positive means selection favors fitter individuals">
+        <div style={styles.stat} data-help="Difference in avg fitness between selected and eligible — positive means selection favors fitter individuals" data-help-glossary="selection">
           <span style={styles.statLabel}>Selection Pressure</span>
           <span style={styles.statValue}>
             {hasData ? (

@@ -134,12 +134,14 @@ const VirtualList: React.FC<{
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help={HELP_ID}
+          data-help-glossary="individual"
         >
           #
         </span>
         <span
           style={{ gridColumn: '2', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
           data-help={HELP_GENES}
+          data-help-glossary="chromosome"
         >
           {'\uD83E\uDDEC'}
         </span>
@@ -148,6 +150,7 @@ const VirtualList: React.FC<{
           onClick={() => toggleSort('fitness')}
           title="Sort by fitness"
           data-help={HELP_FITNESS}
+          data-help-glossary="fitness"
         >
           {arrow('fitness')}{'\uD83C\uDFC5'}
         </span>
@@ -927,6 +930,13 @@ const CATEGORY_HELP: Record<CategoryKey, string> = {
   'Mutations': 'Children that had a random gene changed after crossover — introduces variety to escape local optima',
 };
 
+const CATEGORY_GLOSSARY: Record<CategoryKey, string> = {
+  'Eligible parents': 'eligible-parents',
+  'Actual parents': 'actual-parents',
+  'Children': 'crossover',
+  'Mutations': 'mutation',
+};
+
 function getCategoryData(
   breedingData: GenerationBreedingData,
   category: CategoryKey,
@@ -1011,6 +1021,7 @@ export const BreedingListboxes: React.FC<Props> = ({
       <div style={bStyles.sectionTitleRow}>
         <div style={{ ...bStyles.sectionTitle, borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}
           data-help={CATEGORY_HELP[selectedCategory]}
+          data-help-glossary={CATEGORY_GLOSSARY[selectedCategory]}
         >
           View
         </div>
@@ -1032,6 +1043,7 @@ export const BreedingListboxes: React.FC<Props> = ({
                     ...(cat === selectedCategory ? bStyles.dropdownItemActive : {}),
                   }}
                   data-help={CATEGORY_HELP[cat]}
+                  data-help-glossary={CATEGORY_GLOSSARY[cat]}
                   onClick={() => { onCategoryChange(cat); setDropdownOpen(false); }}
                 >
                   {cat} ({formatCoordinate(categoryToOrigin(cat, generation).coordinate)})

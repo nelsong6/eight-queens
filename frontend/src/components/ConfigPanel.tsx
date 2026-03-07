@@ -173,7 +173,7 @@ export const ConfigPanel: React.FC<Props> = ({
           </div>
         </div>
         {/* Population */}
-        <div style={styles.statRow} data-help="Number of individuals created each generation. Use mousewheel or arrow keys to adjust.">
+        <div style={styles.statRow} data-help="Number of individuals created each generation. Use mousewheel or arrow keys to adjust." data-help-glossary="population">
           <span style={styles.statLabel}>Population</span>
           <input
             ref={popRef}
@@ -189,7 +189,7 @@ export const ConfigPanel: React.FC<Props> = ({
         </div>
 
         {/* Crossover */}
-        <div style={styles.statRow} data-help="Gene position range where chromosomes can be split during breeding. Use mousewheel or arrow keys to adjust.">
+        <div style={styles.statRow} data-help="Gene position range where chromosomes can be split during breeding. Use mousewheel or arrow keys to adjust." data-help-glossary="crossover">
           <span style={styles.statLabel}>Crossover</span>
           <span style={styles.inlineGroup}>
             [<input
@@ -215,7 +215,7 @@ export const ConfigPanel: React.FC<Props> = ({
         </div>
 
         {/* Mutation */}
-        <div style={styles.statRow} data-help="Probability of a random gene change after crossover. Use mousewheel or arrow keys to adjust.">
+        <div style={styles.statRow} data-help="Probability of a random gene change after crossover. Use mousewheel or arrow keys to adjust." data-help-glossary="mutation">
           <span style={styles.statLabel}>Mutation</span>
           <span style={styles.inlineGroup}>
             <input

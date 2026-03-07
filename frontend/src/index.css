@@ -1,3 +1,8 @@
+/* Use dark system colors for all form controls */
+:root {
+  color-scheme: dark;
+}
+
 /* Button interactive states */
 /* Colors here must match colors.ts tokens (CSS can't import TS) */
 /* border.strong = #3a3a5e, accent.purple = #7c6cf0, accent.purpleLight = #9a8df5 */
@@ -35,6 +40,25 @@
 .btn-danger:active:not(:disabled) {
   background-color: #8a2828 !important;
   transform: scale(0.96);
+}
+
+/* Tab nav buttons (sidebar) */
+/* interactive.hover = #252550, text.secondary = #a0a0be */
+.tab-nav {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+.tab-nav:focus,
+.tab-nav:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.tab-nav:hover:not(:disabled) {
+  background-color: #252550 !important;
+  color: #a0a0be !important;
 }
 
 /* Hide number spinner buttons (arrow keys still work) */

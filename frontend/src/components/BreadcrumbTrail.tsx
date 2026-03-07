@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { getOp, SCREENS_PER_OP, SCREENS_PER_GENERATION } from '../engine/time-coordinate';
 import { colors } from '../colors';
+import type { ActiveTab } from './TabBar';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -12,11 +13,12 @@ interface BreadcrumbSegment {
 
 interface BreadcrumbTrailProps {
   sessionPhase: SessionPhase;
-  granularity: 'full' | 'micro';
+  activeTab: ActiveTab;
   walkthroughPhase: number | null;
   browsePairIndex: number | null;
   zoomedPanel: string | null;
   breedingCategory: string;
+  onTabChange: (tab: ActiveTab) => void;
   onSetGranularity: (g: 'full' | 'micro') => void;
   onClearWalkthrough: () => void;
   onClearZoom: () => void;
@@ -33,44 +35,71 @@ const PANEL_LABELS: Record<string, string> = {
 
 export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
   sessionPhase,
-  granularity,
+  activeTab,
   walkthroughPhase,
   browsePairIndex,
   zoomedPanel,
   breedingCategory,
+  onTabChange,
   onSetGranularity,
   onClearWalkthrough,
   onClearZoom,
 }) => {
   const segments = useMemo((): BreadcrumbSegment[] => {
     const result: BreadcrumbSegment[] = [];
-    const isMicro = sessionPhase === 'running' && granularity === 'micro';
+    const isMicro = activeTab === 'micro';
+    const isFull = activeTab === 'full';
     const hasWalkthrough = isMicro && walkthroughPhase !== null;
     const hasZoom = zoomedPanel !== null;
 
-    // Determine if this segment has deeper levels (makes it clickable)
-    const hasDeeper = isMicro || hasZoom;
-
-    // Layer 1: Session phase (always present)
     const phaseLabel =
       sessionPhase === 'config' ? 'Config' :
       sessionPhase === 'review' ? 'Review' : 'Running';
+    const phaseHelpText =
+      sessionPhase === 'config' ? 'Configure algorithm parameters before starting' :
+      sessionPhase === 'review' ? 'Algorithm solved — reviewing solution' :
+      'Algorithm is running';
 
+    if (activeTab === 'getting-started') {
+      result.push({
+        label: phaseLabel,
+        onClick: () => onTabChange('full'),
+        helpText: phaseHelpText,
+      });
+      result.push({
+        label: 'Getting Started',
+        onClick: null,
+        helpText: 'Introduction, help bar guide, and quick-start buttons',
+      });
+      return result;
+    }
+
+    if (activeTab === 'help') {
+      result.push({
+        label: phaseLabel,
+        onClick: () => onTabChange('full'),
+        helpText: phaseHelpText,
+      });
+      result.push({
+        label: 'Help / Glossary',
+        onClick: null,
+        helpText: 'Genetic algorithm concepts, pipeline reference, and glossary of terms',
+      });
+      return result;
+    }
+
+    // Layer 1: Session phase (for full/micro tabs)
+    const phaseHasDeeper = isMicro || hasZoom;
     result.push({
       label: phaseLabel,
-      onClick: hasDeeper ? () => { onSetGranularity('full'); onClearZoom(); } : null,
-      helpText: sessionPhase === 'config'
-        ? 'Configure algorithm parameters before starting'
-        : sessionPhase === 'review'
-          ? 'Algorithm solved — reviewing solution'
-          : 'Algorithm is running',
+      onClick: phaseHasDeeper ? () => { onSetGranularity('full'); onClearZoom(); } : null,
+      helpText: phaseHelpText,
     });
 
-    // Layer 2: Granularity (when running)
-    const isFull = sessionPhase === 'running' && granularity === 'full';
+    // Layer 2: Tab name
     if (isFull) {
       result.push({
-        label: 'Full',
+        label: 'Full Step',
         onClick: hasZoom ? () => { onClearZoom(); } : null,
         helpText: 'Full-step mode: stepping through complete generations',
       });
@@ -79,9 +108,9 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
     if (isMicro) {
       const microHasDeeper = hasWalkthrough || hasZoom;
       result.push({
-        label: 'Micro',
+        label: 'Granular Step',
         onClick: microHasDeeper ? () => { onClearWalkthrough(); onClearZoom(); } : null,
-        helpText: 'Micro-step mode: stepping through individual algorithm phases',
+        helpText: 'Granular step mode: stepping through individual algorithm phases',
       });
 
       // Layer 3: Walkthrough phase (walkthroughPhase = operation * 3 + boundary)
@@ -89,13 +118,13 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
         const operation = Math.floor(walkthroughPhase! / SCREENS_PER_OP);
         const boundary = walkthroughPhase! % SCREENS_PER_OP as 0 | 1 | 2;
         const op = getOp(operation);
-        const phaseLabel = boundary === 0 ? 'Before' : boundary === 1 ? 'Transform' : 'After';
+        const boundaryLabel = boundary === 0 ? 'Before' : boundary === 1 ? 'Transform' : 'After';
         const screenIndex = walkthroughPhase! + 1;
         const totalScreens = SCREENS_PER_GENERATION;
         result.push({
-          label: `${op.category} — ${op.name} (${phaseLabel})`,
+          label: `${op.category} — ${op.name} (${boundaryLabel})`,
           onClick: hasZoom ? () => { onClearZoom(); } : null,
-          helpText: `Step ${screenIndex}/${totalScreens}: ${phaseLabel} ${op.name} [${op.type}]`,
+          helpText: `Step ${screenIndex}/${totalScreens}: ${boundaryLabel} ${op.name} [${op.type}]`,
         });
 
         // Layer 4: Pair indicator (crossover generate chromosomes, after)
@@ -129,12 +158,11 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
     }
 
     return result;
-  }, [sessionPhase, granularity, walkthroughPhase, browsePairIndex, zoomedPanel, breedingCategory,
-      onSetGranularity, onClearWalkthrough, onClearZoom]);
+  }, [sessionPhase, activeTab, walkthroughPhase, browsePairIndex, zoomedPanel, breedingCategory,
+      onTabChange, onSetGranularity, onClearWalkthrough, onClearZoom]);
 
   return (
     <div style={styles.bar} data-help="Navigation breadcrumb — click any segment to return to that level">
-      <span style={styles.separator}>&gt;</span>
       {segments.map((seg, i) => (
         <React.Fragment key={i}>
           {i > 0 && <span style={styles.separator}>&gt;</span>}

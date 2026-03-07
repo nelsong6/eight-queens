@@ -35,7 +35,7 @@ export const CrossoverPhase: React.FC<Props> = ({
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title} data-help="Selected parents are paired and their chromosomes are combined to create children">Phase 2: Crossover</div>
+      <div style={styles.title} data-help="Selected parents are paired and their chromosomes are combined to create children" data-help-glossary="crossover">Phase 2: Crossover</div>
       <div style={styles.subtitle} data-help="The chromosome is cut at one random point and the two halves are swapped between parents">Single-Point Crossover</div>
 
       <div style={styles.explanation}>
@@ -88,7 +88,7 @@ export const CrossoverPhase: React.FC<Props> = ({
       />
 
       {/* Splice indicator */}
-      <div style={styles.spliceRow} data-help="The position where chromosomes are cut — genes after this point are swapped between parents">
+      <div style={styles.spliceRow} data-help="The position where chromosomes are cut — genes after this point are swapped between parents" data-help-glossary="crossover">
         <div style={styles.spliceLineContainer}>
           {Array.from({ length: 8 }, (_, i) => (
             <div
