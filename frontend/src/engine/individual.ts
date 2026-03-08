@@ -55,6 +55,13 @@ export function cloneIndividual(ind: Individual): Individual {
     fitness: ind.fitness,
     bornGeneration: ind.bornGeneration,
     age: ind.age,
+    pipelineRole: ind.pipelineRole,
+    partnerIds: ind.partnerIds ? [...ind.partnerIds] : undefined,
+    parentAId: ind.parentAId,
+    parentBId: ind.parentBId,
+    crossoverPoint: ind.crossoverPoint,
+    mutated: ind.mutated,
+    preMutationSolution: ind.preMutationSolution ? [...ind.preMutationSolution] : undefined,
   };
 }
 
@@ -76,6 +83,8 @@ export function mutate(ind: Individual, mutationRate: number): MutationRecord | 
     const newValue = randomInt(0, 7);
     ind.solution[mutateIndex] = newValue;
     ind.fitness = assessFitness(ind.solution);
+    ind.mutated = true;
+    ind.preMutationSolution = preMutationSolution;
     return { individual: ind, geneIndex: mutateIndex, oldValue, newValue, preMutationSolution, preMutationFitness };
   }
 

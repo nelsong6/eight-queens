@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { Individual, Age, GenerationResult, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
-import { getOp, poolDisplayName, getPipelineState, resolvePoolFromPipeline } from '../../engine/time-coordinate';
+import { getOp, poolDisplayName, getPipelineState, resolvePoolFromPipeline, getPoolsAtCoordinate } from '../../engine/time-coordinate';
 import { type SortingState, type ColumnFiltersState } from '@tanstack/react-table';
 import { IndividualList, TransformView } from './IndividualList';
 import { colors } from '../../colors';
@@ -24,9 +24,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
   onPairChange,
 }) => {
   const op = getOp(coordinate.operation);
-  const pools = Object.keys(
-    getPipelineState(result.pipeline, coordinate.operation, coordinate.boundary)
-  ) as PoolName[];
+  const pools = getPoolsAtCoordinate(coordinate);
   const [poolFilter, setPoolFilter] = useState<PoolFilter>(() => pools.length > 1 ? 'all' : (pools[0] ?? 'all'));
   const [sorting, setSorting] = useState<SortingState>([{ id: 'fitness', desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -65,11 +63,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
   const { removedIds, survivedIds, hasTransformDiff, removedCount, survivedCount } = useMemo(() => {
     const collectIds = (boundary: 0 | 1 | 2) => {
       const snap = getPipelineState(result.pipeline, coordinate.operation, boundary);
-      const ids = new Set<number>();
-      for (const arr of Object.values(snap)) {
-        for (const ind of (arr ?? [])) ids.add(ind.id);
-      }
-      return ids;
+      return new Set(snap.map(ind => ind.id));
     };
 
     const beforeIds = collectIds(0);

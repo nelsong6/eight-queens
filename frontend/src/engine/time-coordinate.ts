@@ -1,4 +1,4 @@
-import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, GenerationPipeline, PipelineSnapshot, PipelineOp, Individual, GenerationResult, Age, MutationRecord } from './types';
+import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, PipelineRole, GenerationPipeline, PipelineOp, Individual, GenerationResult, Age, MutationRecord } from './types';
 import type { CategoryKey } from '../components/BreedingListboxes';
 import { cloneIndividual } from './individual';
 
@@ -89,17 +89,31 @@ export function categoryToOrigin(category: CategoryKey, generation: number): Poo
 // Pipeline snapshot accessors
 // ============================================================================
 
+/** Maps each PoolName to the PipelineRole that identifies membership in that pool. */
+const ROLE_FOR_POOL: Record<PoolName, PipelineRole> = {
+  oldParents:       'oldParent',
+  previousChildren: 'previousChild',
+  retiredParents:   'retiredParent',
+  eligibleAdults:   'eligibleAdult',
+  selectedPairs:    'selectedPair',
+  unselected:       'unselected',
+  matedParents:     'matedParent',
+  chromosomes:      'chromosome',
+  finalChildren:    'finalChild',
+};
+
 /**
- * Get the pool snapshot at a given operation and boundary from the pipeline.
+ * Get the master-list snapshot at a given operation and boundary from the pipeline.
  * ops[y][z]: y = operation (0–6), z = boundary (0=before, 1=transform, 2=after).
  */
-export function getPipelineState(pipeline: GenerationPipeline, op: number, boundary: 0 | 1 | 2): PipelineSnapshot {
+export function getPipelineState(pipeline: GenerationPipeline, op: number, boundary: 0 | 1 | 2): Individual[] {
   return pipeline.ops[op]![boundary];
 }
 
 /**
  * Resolve a named pool's individuals from the pipeline at a given coordinate.
- * Returns empty array if the pool is not present at that coordinate.
+ * Filters the master-list snapshot by each individual's pipelineRole field.
+ * Returns empty array if no individuals have that role at this coordinate.
  */
 export function resolvePoolFromPipeline(
   pool: PoolName,
@@ -107,7 +121,8 @@ export function resolvePoolFromPipeline(
   op: number,
   boundary: 0 | 1 | 2,
 ): Individual[] {
-  return (getPipelineState(pipeline, op, boundary)[pool] ?? []) as Individual[];
+  const role = ROLE_FOR_POOL[pool];
+  return getPipelineState(pipeline, op, boundary).filter(i => i.pipelineRole === role);
 }
 
 /**
@@ -209,7 +224,7 @@ export function getTransformDescription(operationIndex: number): { title: string
  * i.e. it was produced with skipPipeline=true during full-mode autoplay.
  */
 export function isPipelineEmpty(result: GenerationResult): boolean {
-  return Object.keys(result.pipeline.ops[2]![2]).length === 0;
+  return result.pipeline.ops[2]![2].length === 0;
 }
 
 /**
@@ -226,65 +241,99 @@ export function reconstructPipeline(
 ): GenerationPipeline {
   const { breedingData } = result;
 
-  // Build pre-mutation chromosome list from breedingData.
-  // Non-mutated children: aChildren[i]/bChildren[i] are already the final genes (no mutation applied).
-  // Mutated children: preMutationSolution/Fitness are stored in mutationRecords.
+  // Build mutation info map (child id → record)
   const mutationMap = new Map<number, MutationRecord>();
   for (const rec of breedingData.mutationRecords) {
     mutationMap.set(rec.individual.id, rec);
   }
 
+  // Build partner ID map from breeding pairs
+  const partnerIdMap = new Map<number, Set<number>>();
+  for (let i = 0; i < breedingData.aParents.length; i++) {
+    const a = breedingData.aParents[i]!;
+    const b = breedingData.bParents[i]!;
+    if (!partnerIdMap.has(a.id)) partnerIdMap.set(a.id, new Set());
+    if (!partnerIdMap.has(b.id)) partnerIdMap.set(b.id, new Set());
+    partnerIdMap.get(a.id)!.add(b.id);
+    partnerIdMap.get(b.id)!.add(a.id);
+  }
+
+  // Helper: tag a cloned individual with a role (and optional extra fields)
+  const tag = (ind: Individual, role: PipelineRole, extra?: Partial<Individual>): Individual => ({
+    ...cloneIndividual(ind), pipelineRole: role, ...extra,
+  });
+
+  // Transform slot (z=1) is a deep-clone of before, matching step() behavior.
+  const makeOp = (before: Individual[], after: Individual[]): PipelineOp =>
+    [before, before.map(cloneIndividual), after];
+
+  // Build pre-mutation chromosomes: undo mutation if it occurred, tag with parentage
   const targetCount = breedingData.allChildren.length;
   const preMutationChromosomes: Individual[] = [];
   let count = 0;
   for (let i = 0; i < breedingData.aChildren.length && count < targetCount; i++) {
     const aChild = breedingData.aChildren[i]!;
     const aRec = mutationMap.get(aChild.id);
-    preMutationChromosomes.push(aRec
-      ? { ...aChild, solution: [...aRec.preMutationSolution], fitness: aRec.preMutationFitness }
-      : { ...aChild });
+    preMutationChromosomes.push(tag(
+      aRec ? { ...aChild, solution: [...aRec.preMutationSolution], fitness: aRec.preMutationFitness } : aChild,
+      'chromosome',
+      { parentAId: breedingData.aParents[i]?.id, parentBId: breedingData.bParents[i]?.id, crossoverPoint: breedingData.crossoverPoints[i] },
+    ));
     count++;
 
     if (count < targetCount && i < breedingData.bChildren.length) {
       const bChild = breedingData.bChildren[i]!;
       const bRec = mutationMap.get(bChild.id);
-      preMutationChromosomes.push(bRec
-        ? { ...bChild, solution: [...bRec.preMutationSolution], fitness: bRec.preMutationFitness }
-        : { ...bChild });
+      preMutationChromosomes.push(tag(
+        bRec ? { ...bChild, solution: [...bRec.preMutationSolution], fitness: bRec.preMutationFitness } : bChild,
+        'chromosome',
+        { parentAId: breedingData.aParents[i]?.id, parentBId: breedingData.bParents[i]?.id, crossoverPoint: breedingData.crossoverPoints[i] },
+      ));
       count++;
     }
   }
 
-  // Derived pools from breedingData
-  const eligibleAdults = breedingData.eligibleParents;
-  const selectedPairs = breedingData.actualParents;
-  const selectedIds = new Set(selectedPairs.map(p => p.id));
-  const unselected = eligibleAdults.filter(p => !selectedIds.has(p.id));
-  const matedParents = selectedPairs;
-  const postMutationChromosomes = breedingData.allChildren;
-  const finalChildren = breedingData.allChildren;
+  // Post-mutation chromosomes: tag with parentage and mutation info
+  const postMutChromosomes = breedingData.allChildren.map(child => {
+    const rec = mutationMap.get(child.id);
+    return tag(child, 'chromosome', {
+      mutated: rec ? true : undefined,
+      preMutationSolution: rec ? [...rec.preMutationSolution] : undefined,
+    });
+  });
 
-  // Transform slot (z=1) is an independent deep-clone of before, matching step() behavior.
-  const cloneSnap = (s: PipelineSnapshot): PipelineSnapshot =>
-    Object.fromEntries(
-      Object.entries(s).map(([k, v]) => [k, (v as Individual[]).map(cloneIndividual)])
-    ) as PipelineSnapshot;
-  const makeOp = (before: PipelineSnapshot, after: PipelineSnapshot): PipelineOp =>
-    [before, cloneSnap(before), after];
+  // Derived pools tagged with roles
+  const eligibleAdults = breedingData.eligibleParents.map(p => tag(p, 'eligibleAdult'));
+  const selectedIds = new Set(breedingData.actualParents.map(p => p.id));
+  const unselected = eligibleAdults.filter(p => !selectedIds.has(p.id)).map(p => tag(p, 'unselected'));
+  const selectedPairs = breedingData.actualParents.map(p => tag(p, 'selectedPair'));
+  const matedParents = breedingData.actualParents.map(p => tag(p, 'matedParent', {
+    partnerIds: [...(partnerIdMap.get(p.id) ?? new Set())],
+  }));
+  const finalChildren = breedingData.allChildren.map(child => {
+    const rec = mutationMap.get(child.id);
+    return tag(child, 'finalChild', {
+      mutated: rec ? true : undefined,
+      preMutationSolution: rec ? [...rec.preMutationSolution] : undefined,
+    });
+  });
 
   // Ops 0–1: pre-aging pools, require previousResult
-  let op0: PipelineOp = [{}, {}, {}];
-  let op1: PipelineOp = [{}, {}, {}];
+  let op0: PipelineOp = [[], [], []];
+  let op1: PipelineOp = [[], [], []];
   if (previousResult) {
-    const oldParents = previousResult.breedingData.eligibleParents.map(p => ({ ...p, age: 3 as Age }));
-    const prevChildren = previousResult.breedingData.allChildren.map(c => ({ ...c, age: 2 as Age }));
+    const oldParents = previousResult.breedingData.eligibleParents.map(p => tag(p, 'oldParent'));
+    const prevChildren = previousResult.breedingData.allChildren.map(c => tag(c, 'previousChild'));
+    const retiredParents = previousResult.breedingData.eligibleParents.map(p =>
+      tag(p, 'retiredParent', { age: 3 as Age })
+    );
     op0 = makeOp(
-      { oldParents, previousChildren: prevChildren },
-      { retiredParents: oldParents, eligibleAdults },
+      [...oldParents, ...prevChildren],
+      [...retiredParents, ...eligibleAdults],
     );
     op1 = makeOp(
-      { retiredParents: oldParents, eligibleAdults },
-      { eligibleAdults },
+      [...retiredParents, ...eligibleAdults],
+      eligibleAdults,
     );
   }
 
@@ -292,11 +341,11 @@ export function reconstructPipeline(
     ops: [
       op0,
       op1,
-      makeOp({ eligibleAdults }, { selectedPairs, unselected }),
-      makeOp({ selectedPairs, unselected }, { matedParents, unselected }),
-      makeOp({ matedParents, unselected }, { matedParents, unselected, chromosomes: preMutationChromosomes }),
-      makeOp({ matedParents, unselected, chromosomes: preMutationChromosomes }, { matedParents, unselected, chromosomes: postMutationChromosomes }),
-      makeOp({ matedParents, unselected, chromosomes: postMutationChromosomes }, { matedParents, unselected, finalChildren }),
+      makeOp(eligibleAdults, [...selectedPairs, ...unselected]),
+      makeOp([...selectedPairs, ...unselected], [...matedParents, ...unselected]),
+      makeOp([...matedParents, ...unselected], [...matedParents, ...unselected, ...preMutationChromosomes]),
+      makeOp([...matedParents, ...unselected, ...preMutationChromosomes], [...matedParents, ...unselected, ...postMutChromosomes]),
+      makeOp([...matedParents, ...unselected, ...postMutChromosomes], [...matedParents, ...unselected, ...finalChildren]),
     ],
   };
 }

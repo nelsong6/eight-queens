@@ -21,8 +21,6 @@ interface Props {
 export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult }) => {
   const currentStep = coordinate.operation * SCREENS_PER_OP + coordinate.boundary;
   const totalSteps = OPS_PER_GENERATION * SCREENS_PER_OP;
-  const activeColor = CATEGORY_COLORS[GENERATION_OPS[coordinate.operation]!.category] ?? colors.text.disabled;
-
   return (
     <div
       style={{ ...styles.container, opacity: hasResult ? 1 : 0.4 }}

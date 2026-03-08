@@ -12,11 +12,11 @@ import {
   AlgorithmConfig,
   Individual,
   Age,
+  PipelineRole,
   MutationRecord,
   GenerationResult,
   GenerationBreedingData,
   GenerationPipeline,
-  PipelineSnapshot,
   PipelineOp,
   StepStatistics,
   MAX_FITNESS,
@@ -216,7 +216,7 @@ export class QueensPuzzle {
     };
 
     // Assemble full pipeline snapshot (skipped for intermediate bulk steps)
-    const emptyOps = (): GenerationPipeline => ({ ops: Array.from({ length: 7 }, (): PipelineOp => [{}, {}, {}]) });
+    const emptyOps = (): GenerationPipeline => ({ ops: Array.from({ length: 7 }, (): PipelineOp => [[], [], []]) });
 
     let pipeline: GenerationPipeline;
     if (skipPipeline) {
@@ -224,50 +224,73 @@ export class QueensPuzzle {
     } else {
       const selectedIds = new Set(actualParents.map(p => p.id));
       const unselected = eligibleAdultsSnap.filter(p => !selectedIds.has(p.id));
-      const matedParents = actualParents.map(cloneIndividual);
-      const postMutationChromosomes = this.children.map(cloneIndividual);
 
-      // Helper: deep-clone a snapshot so each boundary is independently mutable
-      const cloneSnap = (s: PipelineSnapshot): PipelineSnapshot =>
-        Object.fromEntries(
-          Object.entries(s).map(([k, v]) => [k, (v as Individual[]).map(cloneIndividual)])
-        ) as PipelineSnapshot;
+      // Build partner ID map: for each selected parent, record which other parents it was paired with
+      const partnerIdMap = new Map<number, Set<number>>();
+      for (let i = 0; i < this._aParents.length; i++) {
+        const a = this._aParents[i]!;
+        const b = this._bParents[i]!;
+        if (!partnerIdMap.has(a.id)) partnerIdMap.set(a.id, new Set());
+        if (!partnerIdMap.has(b.id)) partnerIdMap.set(b.id, new Set());
+        partnerIdMap.get(a.id)!.add(b.id);
+        partnerIdMap.get(b.id)!.add(a.id);
+      }
+
+      // Helper: tag a cloned individual with a pipeline role (and optional extra fields)
+      const tag = (ind: Individual, role: PipelineRole, extra?: Partial<Individual>): Individual => ({
+        ...cloneIndividual(ind), pipelineRole: role, ...extra,
+      });
 
       // The transform snapshot (z=1) is seeded from before but is its own deep clone —
       // future work can populate it with transition-specific data independently.
-      const makeOp = (before: PipelineSnapshot, after: PipelineSnapshot): PipelineOp =>
-        [before, cloneSnap(before), after];
+      const makeOp = (before: Individual[], after: Individual[]): PipelineOp =>
+        [before, before.map(cloneIndividual), after];
+
+      // Build master-list snapshots for each boundary
+      const snap00 = [ // op 0 before: old adults + previous children
+        ...preAgingOldParents.map(i => tag(i, 'oldParent')),
+        ...preAgingPrevChildren.map(i => tag(i, 'previousChild')),
+      ];
+      const snap02 = [ // op 0 after / op 1 before: retired elders + eligible adults
+        ...retiredParents.map(i => tag(i, 'retiredParent')),
+        ...eligibleAdultsSnap.map(i => tag(i, 'eligibleAdult')),
+      ];
+      const snap12 = eligibleAdultsSnap.map(i => tag(i, 'eligibleAdult')); // op 1 after / op 2 before
+      const snap22 = [ // op 2 after / op 3 before: selected + unselected
+        ...actualParents.map(i => tag(i, 'selectedPair')),
+        ...unselected.map(i => tag(i, 'unselected')),
+      ];
+      const snap32 = [ // op 3 after / op 4 before: mated (with partners) + unselected
+        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
+        ...unselected.map(i => tag(i, 'unselected')),
+      ];
+      const preMutChromosomes = this._preMutationChildren.map(i => tag(i, 'chromosome'));
+      const snap42 = [ // op 4 after / op 5 before: mated + unselected + pre-mutation chromosomes
+        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
+        ...unselected.map(i => tag(i, 'unselected')),
+        ...preMutChromosomes,
+      ];
+      const postMutChromosomes = this.children.map(i => tag(i, 'chromosome'));
+      const snap52 = [ // op 5 after / op 6 before: mated + unselected + post-mutation chromosomes
+        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
+        ...unselected.map(i => tag(i, 'unselected')),
+        ...postMutChromosomes,
+      ];
+      const snap62 = [ // op 6 after: mated + unselected + realized children
+        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
+        ...unselected.map(i => tag(i, 'unselected')),
+        ...this.children.map(i => tag(i, 'finalChild')),
+      ];
 
       pipeline = {
         ops: [
-          makeOp( // op 0: Age individuals
-            { oldParents: preAgingOldParents, previousChildren: preAgingPrevChildren },
-            { retiredParents, eligibleAdults: eligibleAdultsSnap },
-          ),
-          makeOp( // op 1: Remove elders
-            { retiredParents: retiredParents.map(cloneIndividual), eligibleAdults: eligibleAdultsSnap.map(cloneIndividual) },
-            { eligibleAdults: eligibleAdultsSnap.map(cloneIndividual) },
-          ),
-          makeOp( // op 2: Select breeding pairs
-            { eligibleAdults: eligibleAdultsSnap.map(cloneIndividual) },
-            { selectedPairs: actualParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
-          ),
-          makeOp( // op 3: Mark pairs as mated
-            { selectedPairs: actualParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
-          ),
-          makeOp( // op 4: Generate chromosomes
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual) },
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: this._preMutationChildren },
-          ),
-          makeOp( // op 5: Apply mutations
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: this._preMutationChildren.map(cloneIndividual) },
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: postMutationChromosomes },
-          ),
-          makeOp( // op 6: Realize children
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), chromosomes: postMutationChromosomes.map(cloneIndividual) },
-            { matedParents: matedParents.map(cloneIndividual), unselected: unselected.map(cloneIndividual), finalChildren: postMutationChromosomes.map(cloneIndividual) },
-          ),
+          makeOp(snap00, snap02), // op 0: Age individuals
+          makeOp(snap02, snap12), // op 1: Remove elders
+          makeOp(snap12, snap22), // op 2: Select breeding pairs
+          makeOp(snap22, snap32), // op 3: Mark pairs as mated
+          makeOp(snap32, snap42), // op 4: Generate chromosomes
+          makeOp(snap42, snap52), // op 5: Apply mutations
+          makeOp(snap52, snap62), // op 6: Realize children
         ],
       };
     }
@@ -426,6 +449,14 @@ export class QueensPuzzle {
       const crossoverPos = randomInt(minPos, maxPos);
       this._crossoverPoints.push(crossoverPos);
 
+      // Record parentage and crossover data on the children themselves
+      childA.parentAId = parentA.id;
+      childA.parentBId = parentB.id;
+      childA.crossoverPoint = crossoverPos;
+      childB.parentAId = parentA.id;
+      childB.parentBId = parentB.id;
+      childB.crossoverPoint = crossoverPos;
+
       // Swap genes from crossover position onwards
       for (let i = crossoverPos; i < 8; i++) {
         const temp = childA.solution[i]!;
@@ -526,19 +557,10 @@ export class QueensPuzzle {
   getInitialResult(): GenerationResult {
     const best = this.parents[0]!; // already sorted descending
     // Gen 0 micro mode starts at 0.6.2 — pre-aging pools are never visited.
-    // Stub the pipeline with the final state at op 6 after (the initial population as children).
-    const initialChildren = this.parents.map(cloneIndividual);
-    const emptyOp = (): PipelineOp => [{}, {}, {}];
+    // Stub with all-empty ops; withPipeline() will reconstruct from breedingData on demand.
+    const emptyOp = (): PipelineOp => [[], [], []];
     const pipeline: GenerationPipeline = {
-      ops: [
-        emptyOp(), // op 0
-        emptyOp(), // op 1
-        emptyOp(), // op 2
-        emptyOp(), // op 3
-        emptyOp(), // op 4
-        emptyOp(), // op 5
-        [{}, {}, { finalChildren: initialChildren }], // op 6 after: initial pop as final children
-      ],
+      ops: [emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp()],
     };
     return {
       generationNumber: 0,

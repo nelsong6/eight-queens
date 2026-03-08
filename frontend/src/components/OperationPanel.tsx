@@ -5,7 +5,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import type { Individual, GenerationResult, PoolOrigin, PoolName } from '../engine/types';
-import { getOp, poolDisplayName, getPipelineState, resolvePoolFromPipeline } from '../engine/time-coordinate';
+import { getOp, poolDisplayName, resolvePoolFromPipeline, getPoolsAtCoordinate } from '../engine/time-coordinate';
 import { type SortingState, type ColumnFiltersState } from '@tanstack/react-table';
 import { IndividualList, TransformView, CATEGORY_COLORS } from './walkthrough/IndividualList';
 import { colors } from '../colors';
@@ -47,8 +47,7 @@ const BoundarySection: React.FC<{
 
   const coordinate = useMemo(() => ({ generation: result.generationNumber, operation, boundary }), [result.generationNumber, operation, boundary]);
 
-  const snap = useMemo(() => getPipelineState(result.pipeline, operation, boundary), [result.pipeline, operation, boundary]);
-  const pools = useMemo(() => Object.keys(snap) as PoolName[], [snap]);
+  const pools = useMemo(() => getPoolsAtCoordinate({ generation: result.generationNumber, operation, boundary }), [result.generationNumber, operation, boundary]);
 
   // Reset filter if pools change (e.g. operation switched)
   const poolKey = pools.join(',');

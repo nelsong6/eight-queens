@@ -245,6 +245,12 @@ const App: React.FC = () => {
   const handleSelectOperation = useCallback((op: number) => {
     ensureStarted();
     setShowSpecimen(false);
+    // Gen 0 floor guard — don't allow navigating before the starting point
+    const currentGen = walkthroughState?.result.generationNumber ?? algorithm.lastResult?.generationNumber ?? 0;
+    if (currentGen === 0) {
+      const currentOp = walkthroughState?.operation ?? OPS_PER_GENERATION - 1;
+      if (op < currentOp) return;
+    }
     if (walkthroughState) {
       setWalkthroughState({ ...walkthroughState, operation: op, boundary: 0, browsePairIndex: 0 });
     } else if (algorithm.lastResult) {
@@ -476,7 +482,6 @@ const App: React.FC = () => {
             activeTab={activeTab}
             onTabChange={handleTabChange}
             sessionPhase={sessionPhase}
-            hasSecondaryColumn={activeTab === 'micro' || activeTab === 'help'}
           />
         </div>
 
@@ -488,68 +493,69 @@ const App: React.FC = () => {
                 {GENERATION_OPS.map((op, idx) => {
                   const isActive = !showSpecimen && walkthroughState?.operation === idx;
                   const opColor = CATEGORY_COLORS[op.category] ?? colors.accent.purple;
+                  const isAtGenZero = (walkthroughState?.result.generationNumber ?? 0) === 0;
+                  const currentOpIndex = walkthroughState?.operation ?? OPS_PER_GENERATION - 1;
+                  const isBackwardAtFloor = isAtGenZero && idx < currentOpIndex;
                   return (
-                    <button
+                    <div
                       key={idx}
-                      className="tab-nav"
-                      onClick={() => handleSelectOperation(idx)}
-                      data-help={`${op.category}: ${op.name}`}
                       style={{
-                        ...styles.opTab,
-                        color: isActive ? opColor : colors.text.tertiary,
-                        borderTopColor: (isActive && idx > 0) ? colors.border.subtle : 'transparent',
-                        borderLeftColor: isActive ? colors.border.subtle : 'transparent',
-                        borderBottomColor: isActive ? colors.border.subtle : 'transparent',
-                        backgroundColor: isActive ? colors.bg.base : 'transparent',
-                        fontWeight: isActive ? 'bold' : 'normal',
-                        ...(isActive ? { position: 'relative' as const, right: -1, zIndex: 1 } : {}),
+                        ...styles.opTabWrapper,
+                        ...(isActive ? styles.opTabWrapperActive : {}),
+                        opacity: isBackwardAtFloor ? 0.25 : 1,
                       }}
                     >
-                      {OP_TAB_LABELS[idx]}
-                    </button>
+                      <button
+                        className="tab-nav"
+                        onClick={() => handleSelectOperation(idx)}
+                        disabled={isBackwardAtFloor}
+                        data-help={`${op.category}: ${op.name}`}
+                        style={{
+                          ...styles.opTab,
+                          color: isActive ? opColor : colors.text.tertiary,
+                          fontWeight: isActive ? 'bold' : 'normal',
+                          cursor: isBackwardAtFloor ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {OP_TAB_LABELS[idx]}
+                      </button>
+                    </div>
                   );
                 })}
                 <div style={styles.opTabSep} />
-                <button
-                  className="tab-nav"
-                  onClick={() => setShowSpecimen(true)}
-                  data-help="Inspect an individual's genome, fitness, parentage, and mutation"
-                  style={{
-                    ...styles.opTab,
-                    color: showSpecimen ? colors.accent.purple : colors.text.tertiary,
-                    borderTopColor: showSpecimen ? colors.border.subtle : 'transparent',
-                    borderLeftColor: showSpecimen ? colors.border.subtle : 'transparent',
-                    borderBottomColor: showSpecimen ? colors.border.subtle : 'transparent',
-                    backgroundColor: showSpecimen ? colors.bg.base : 'transparent',
-                    fontWeight: showSpecimen ? 'bold' : 'normal',
-                    ...(showSpecimen ? { position: 'relative' as const, right: -1, zIndex: 1 } : {}),
-                  }}
-                >
-                  Specimen{viewedIndividual ? ' \u25cf' : ''}
-                </button>
+                <div style={{ ...styles.opTabWrapper, ...(showSpecimen ? styles.opTabWrapperActive : {}) }}>
+                  <button
+                    className="tab-nav"
+                    onClick={() => setShowSpecimen(true)}
+                    data-help="Inspect an individual's genome, fitness, parentage, and mutation"
+                    style={{
+                      ...styles.opTab,
+                      color: showSpecimen ? colors.accent.purple : colors.text.tertiary,
+                      fontWeight: showSpecimen ? 'bold' : 'normal',
+                    }}
+                  >
+                    Specimen{viewedIndividual ? ' \u25cf' : ''}
+                  </button>
+                </div>
               </>
             )}
-            {activeTab === 'help' && HELP_SECTIONS.map((sec, idx) => {
+            {activeTab === 'help' && HELP_SECTIONS.map((sec, index) => {
               const isActive = helpSection === sec.id;
               return (
-                <button
-                  key={sec.id}
-                  className="tab-nav"
-                  onClick={() => setHelpSection(sec.id)}
-                  data-help={sec.helpText}
-                  style={{
-                    ...styles.opTab,
-                    color: isActive ? colors.text.primary : colors.text.tertiary,
-                    borderTopColor: (isActive && idx > 0) ? colors.border.subtle : 'transparent',
-                    borderLeftColor: isActive ? colors.border.subtle : 'transparent',
-                    borderBottomColor: isActive ? colors.border.subtle : 'transparent',
-                    backgroundColor: isActive ? colors.bg.base : 'transparent',
-                    fontWeight: isActive ? 'bold' : 'normal',
-                    ...(isActive ? { position: 'relative' as const, right: -1, zIndex: 1 } : {}),
-                  }}
-                >
-                  {sec.label}
-                </button>
+                <div key={sec.id} style={{ ...styles.opTabWrapper, ...(isActive ? styles.opTabWrapperActive : {}), ...(isActive && index === 0 ? { borderTop: 'none' } : {}) }}>
+                  <button
+                    className="tab-nav"
+                    onClick={() => setHelpSection(sec.id)}
+                    data-help={sec.helpText}
+                    style={{
+                      ...styles.opTab,
+                      color: isActive ? colors.text.primary : colors.text.tertiary,
+                      fontWeight: isActive ? 'bold' : 'normal',
+                    }}
+                  >
+                    {sec.label}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -841,6 +847,20 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
     whiteSpace: 'nowrap' as const,
   },
+  opTabWrapper: {
+    padding: '1px 0 1px 1px',
+    position: 'relative' as const,
+  },
+  opTabWrapperActive: {
+    padding: 0,
+    borderLeft: `1px solid ${colors.border.subtle}`,
+    borderTop: `1px solid ${colors.border.subtle}`,
+    borderBottom: `1px solid ${colors.border.subtle}`,
+    borderRight: 'none',
+    backgroundColor: colors.bg.raised,
+    marginRight: -1,
+    zIndex: 1,
+  },
   opTab: {
     padding: '10px 16px',
     fontSize: 12,
@@ -851,12 +871,10 @@ const styles: Record<string, React.CSSProperties> = {
     appearance: 'none' as const,
     outline: 'none',
     border: 'none',
-    borderTop: '1px solid transparent',
-    borderLeft: '1px solid transparent',
-    borderBottom: '1px solid transparent',
-    borderRight: 'none',
+    width: '100%',
+    display: 'block' as const,
     whiteSpace: 'nowrap' as const,
-    transition: 'color 0.12s, background-color 0.12s, border-color 0.12s',
+    transition: 'color 0.12s',
     cursor: 'pointer',
     letterSpacing: 0.3,
     textAlign: 'left' as const,

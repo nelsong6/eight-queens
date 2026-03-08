@@ -36,6 +36,18 @@ export const BOARD_SIZE = 8;
 /** Lifecycle age: 0 = chromosome, 1 = child, 2 = adult, 3 = elder. */
 export type Age = 0 | 1 | 2 | 3;
 
+/** Role of an individual within the generation pipeline at a snapshot boundary. */
+export type PipelineRole =
+  | 'oldParent'       // op 0 before: prior-gen adults (or seed parents at gen 1)
+  | 'previousChild'   // op 0 before: prior-gen children (to become adults)
+  | 'retiredParent'   // op 0 after: aged to elder (age 3)
+  | 'eligibleAdult'   // op 1 after / op 2 before: age 1-2, eligible for selection
+  | 'selectedPair'    // op 2 after: chosen by roulette wheel
+  | 'unselected'      // op 2 after: not chosen, persists alongside
+  | 'matedParent'     // op 3 after: partner assigned, partnerIds set
+  | 'chromosome'      // op 4 after: new child pre-realization, crossover data set
+  | 'finalChild';     // op 6 after: chromosome promoted to age-1 child
+
 export interface Individual {
   /** Globally unique numeric ID. */
   id: number;
@@ -49,6 +61,20 @@ export interface Individual {
   bornGeneration?: number;
   /** Lifecycle age: 0 = chromosome, 1 = child, 2 = adult, 3 = elder. */
   age: Age;
+  /** Role in the generation pipeline snapshot; undefined outside pipeline context. */
+  pipelineRole?: PipelineRole;
+  /** IDs of mating partners (set at op 3+, can have multiple from roulette reselection). */
+  partnerIds?: number[];
+  /** ID of the A-side parent (set on chromosomes/children). */
+  parentAId?: number;
+  /** ID of the B-side parent (set on chromosomes/children). */
+  parentBId?: number;
+  /** Crossover split position used when this individual was bred. */
+  crossoverPoint?: number;
+  /** Whether this chromosome was mutated during Apply Mutations (op 5). */
+  mutated?: boolean;
+  /** Gene values before mutation was applied (only if mutated). */
+  preMutationSolution?: number[];
 }
 
 /**
@@ -174,8 +200,12 @@ export interface PoolOrigin {
 // Pipeline Snapshot System
 // ============================================================================
 
-/** Pool map at one boundary of one operation. Keys are PoolName values present at that coordinate. */
-export type PipelineSnapshot = Partial<Record<PoolName, Individual[]>>;
+/**
+ * Flat master list of all individuals present at one boundary of one operation.
+ * Pool membership is derived from each individual's `pipelineRole` field.
+ * Use `resolvePoolFromPipeline` to filter by pool name.
+ */
+export type PipelineSnapshot = Individual[];
 
 /**
  * Three snapshots per operation: before (z=0), transform (z=1), after (z=2).

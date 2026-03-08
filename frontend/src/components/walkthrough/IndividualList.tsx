@@ -72,8 +72,8 @@ export const TransformView: React.FC<{
 
   const beforeSnap = getPipelineState(result.pipeline, coordinate.operation, 0);
   const afterSnap = getPipelineState(result.pipeline, coordinate.operation, 2);
-  const beforeCount = Object.values(beforeSnap).reduce((sum, arr) => sum + (arr?.length ?? 0), 0);
-  const afterCount = Object.values(afterSnap).reduce((sum, arr) => sum + (arr?.length ?? 0), 0);
+  const beforeCount = beforeSnap.length;
+  const afterCount = afterSnap.length;
 
   const delta = afterCount - beforeCount;
   const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '0';

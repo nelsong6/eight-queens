@@ -9,7 +9,6 @@ interface Props {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   sessionPhase: SessionPhase;
-  hasSecondaryColumn?: boolean;
 }
 
 interface TabDef {
@@ -19,7 +18,7 @@ interface TabDef {
   disabled?: boolean;
 }
 
-export const TabBar: React.FC<Props> = ({ activeTab, onTabChange, sessionPhase, hasSecondaryColumn = false }) => {
+export const TabBar: React.FC<Props> = ({ activeTab, onTabChange, sessionPhase }) => {
   const tabs: TabDef[] = [
     {
       id: 'getting-started',
@@ -46,26 +45,34 @@ export const TabBar: React.FC<Props> = ({ activeTab, onTabChange, sessionPhase, 
 
   return (
     <div style={styles.bar}>
-      {tabs.map((tab) => {
+      {tabs.map((tab, index) => {
         const isActive = activeTab === tab.id;
         const isDisabled = !!tab.disabled;
         return (
-          <button
+          <div
             key={tab.id}
-            className="tab-nav"
-            onClick={() => !isDisabled && onTabChange(tab.id)}
-            disabled={isDisabled}
-            data-help={tab.helpText}
             style={{
-              ...styles.tab,
-              ...(isActive ? styles.tabActive : styles.tabInactive),
-              ...(isActive ? { backgroundColor: hasSecondaryColumn ? colors.bg.raised : colors.bg.base } : {}),
+              ...styles.wrapper,
+              ...(isActive ? styles.wrapperActive : styles.wrapperInactive),
+              ...(isActive && index === 0 ? { borderTop: 'none' } : {}),
               opacity: isDisabled ? 0.35 : 1,
-              cursor: isDisabled ? 'not-allowed' : 'pointer',
             }}
           >
-            {tab.label}
-          </button>
+            <button
+              className="tab-nav"
+              onClick={() => !isDisabled && onTabChange(tab.id)}
+              disabled={isDisabled}
+              data-help={tab.helpText}
+              style={{
+                ...styles.tab,
+                color: isActive ? colors.text.primary : colors.text.tertiary,
+                fontWeight: isActive ? 'bold' : 'normal' as const,
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {tab.label}
+            </button>
+          </div>
         );
       })}
     </div>
@@ -84,6 +91,24 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 16,
     gap: 0,
   },
+  // Inactive wrapper uses padding instead of transparent border to reserve
+  // the same 1px space — avoids 'transparent' keyword which color-scheme:dark
+  // can render as white.
+  wrapper: {
+    padding: '1px 0 1px 1px',
+    position: 'relative' as const,
+  },
+  wrapperActive: {
+    padding: 0,
+    borderLeft: `1px solid ${colors.border.subtle}`,
+    borderTop: `1px solid ${colors.border.subtle}`,
+    borderBottom: `1px solid ${colors.border.subtle}`,
+    borderRight: 'none',
+    backgroundColor: colors.bg.raised,
+    marginRight: -1,
+    zIndex: 1,
+  },
+  wrapperInactive: {},
   tab: {
     padding: '10px 16px',
     fontSize: 12,
@@ -93,25 +118,11 @@ const styles: Record<string, React.CSSProperties> = {
     appearance: 'none' as const,
     outline: 'none',
     border: 'none',
-    borderTop: '1px solid transparent',
-    borderLeft: '1px solid transparent',
-    borderBottom: '1px solid transparent',
-    borderRight: 'none',
+    width: '100%',
+    display: 'block' as const,
     whiteSpace: 'nowrap' as const,
-    transition: 'color 0.12s, background-color 0.12s, border-color 0.12s',
+    transition: 'color 0.12s',
     letterSpacing: 0.3,
     textAlign: 'left' as const,
-  },
-  tabActive: {
-    color: colors.text.primary,
-    fontWeight: 'bold' as const,
-    borderLeftColor: colors.border.subtle,
-    borderBottomColor: colors.border.subtle,
-    position: 'relative' as const,
-    right: -1,
-    zIndex: 1,
-  },
-  tabInactive: {
-    color: colors.text.tertiary,
   },
 };
