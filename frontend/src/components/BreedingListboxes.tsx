@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
-import type { Individual, MutationRecord, GenerationBreedingData, PoolOrigin } from '../engine/types';
+import type { Specimen, MutationRecord, GenerationBreedingData, PoolOrigin } from '../engine/types';
 import { categoryToOrigin, formatCoordinate } from '../engine/time-coordinate';
 import { colors } from '../colors';
 
 interface Props {
   breedingData: GenerationBreedingData | null;
   generation: number;
-  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
+  onSelectSpecimen: (specimen: Specimen, origin: PoolOrigin) => void;
   selectedCategory: CategoryKey;
   onCategoryChange: (category: CategoryKey) => void;
 }
@@ -21,7 +21,7 @@ const DEFAULT_VISIBLE_HEIGHT = 2000; // overestimate to avoid partial first rend
 const OVERSCAN = 3;
 
 // Grid cell widths in px (monospace 14px ≈ 8.4px per ch)
-const COL_ID = '72px';    // individual index
+const COL_ID = '72px';    // specimen index
 const COL_GENE = '28px';  // single gene digit (with cell padding)
 const COL_FIT = '30px';   // fitness "XX"
 const COL_EXTRA = '30px'; // born gen / partner count
@@ -35,18 +35,18 @@ const CELL: React.CSSProperties = {
 };
 
 // Shared help text for column headers and cell values
-const HELP_ID = 'Individual ID (generation.index) — generation -1 = synthetic seed parent. Click header to sort';
-const HELP_GENES = 'Each row is one individual — an 8-gene sequence representing queen positions on the board';
+const HELP_ID = 'Specimen ID (generation.index) — generation -1 = synthetic seed parent. Click header to sort';
+const HELP_GENES = 'Each row is one specimen — an 8-gene sequence representing queen positions on the board';
 const HELP_FITNESS = 'Fitness score (0–28) — number of non-attacking queen pairs. Click header to sort';
-const HELP_BORN = 'Birth generation — which generation created this individual';
-const HELP_PARTNERS = 'Number of times this individual was selected as a breeding partner. Click header to sort';
+const HELP_BORN = 'Birth generation — which generation created this specimen';
+const HELP_PARTNERS = 'Number of times this specimen was selected as a breeding partner. Click header to sort';
 
 type SortField = 'id' | 'fitness' | 'partners';
 type SortDir = 'asc' | 'desc';
 
 const VirtualList: React.FC<{
-  items: Individual[];
-  onSelect: (ind: Individual) => void;
+  items: Specimen[];
+  onSelect: (ind: Specimen) => void;
   selectedId: number | null;
   emptyText?: string;
   partnerCounts?: Map<number, number>;
@@ -134,7 +134,7 @@ const VirtualList: React.FC<{
           onClick={() => toggleSort('id')}
           title="Sort by index"
           data-help={HELP_ID}
-          data-help-glossary="individual"
+          data-help-glossary="specimen"
         >
           #
         </span>
@@ -157,7 +157,7 @@ const VirtualList: React.FC<{
         {showBornGen && (
           <span
             style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
-            title="Generation this individual was born in"
+            title="Generation this specimen was born in"
             data-help={HELP_BORN}
           >
             {'\uD83D\uDC23'}
@@ -222,7 +222,7 @@ const VirtualList: React.FC<{
 
 const MutationList: React.FC<{
   records: MutationRecord[];
-  onSelect: (ind: Individual) => void;
+  onSelect: (ind: Specimen) => void;
   selectedId: number | null;
   selectedSide?: 'before' | 'after' | null;
   onSelectSide?: (side: 'before' | 'after') => void;
@@ -260,11 +260,11 @@ const MutationList: React.FC<{
   const { genWidth, indexWidth, fitWidth } = useMemo(() => {
     let maxGenLen = 1, maxIndexLen = 1, maxFit = 0;
     for (const rec of records) {
-      const genLen = String(rec.individual.bornGeneration ?? 0).length;
-      const indexLen = String(rec.individual.localIndex).length;
+      const genLen = String(rec.specimen.bornGeneration ?? 0).length;
+      const indexLen = String(rec.specimen.localIndex).length;
       if (genLen > maxGenLen) maxGenLen = genLen;
       if (indexLen > maxIndexLen) maxIndexLen = indexLen;
-      if (rec.individual.fitness > maxFit) maxFit = rec.individual.fitness;
+      if (rec.specimen.fitness > maxFit) maxFit = rec.specimen.fitness;
     }
     return { genWidth: maxGenLen, indexWidth: maxIndexLen, fitWidth: String(maxFit).length };
   }, [records]);
@@ -273,7 +273,7 @@ const MutationList: React.FC<{
     if (!sortField || sortField === 'partners') return records;
     const mul = sortDir === 'asc' ? 1 : -1;
     return [...records].sort((a, b) =>
-      (a.individual[sortField] - b.individual[sortField]) * mul,
+      (a.specimen[sortField] - b.specimen[sortField]) * mul,
     );
   }, [records, sortField, sortDir]);
 
@@ -324,13 +324,13 @@ const MutationList: React.FC<{
         <div style={{ height: totalHeight, position: 'relative' as const }}>
           {sortedRecords.slice(startIndex, endIndex).map((rec, i) => {
             const index = startIndex + i;
-            const ind = rec.individual;
+            const ind = rec.specimen;
             const isSelected = ind.id === selectedId;
             const stripe = index % 2 === 1;
             const fitDelta = ind.fitness - rec.preMutationFitness;
             const isBeforeSelected = isSelected && selectedSide === 'before';
             const isAfterSelected = isSelected && selectedSide === 'after';
-            const beforeInd: Individual = {
+            const beforeInd: Specimen = {
               id: ind.id,
               localIndex: ind.localIndex,
               solution: rec.preMutationSolution,
@@ -414,16 +414,16 @@ const MutationList: React.FC<{
 // ---------------------------------------------------------------------------
 
 interface ChildRecord {
-  child: Individual;
-  parentA: Individual;
-  parentB: Individual;
+  child: Specimen;
+  parentA: Specimen;
+  parentB: Specimen;
   crossoverPoint: number;
   isChildA: boolean;
 }
 
 const ChildrenList: React.FC<{
   records: ChildRecord[];
-  onSelect: (ind: Individual, source: string) => void;
+  onSelect: (ind: Specimen, source: string) => void;
   selectedId: number | null;
 }> = ({ records, onSelect, selectedId }) => {
   const [scrollTop, setScrollTop] = useState(0);
@@ -526,7 +526,7 @@ const ChildrenList: React.FC<{
         </span>
         <span
           style={{ gridColumn: '11', padding: '0 3px', textAlign: 'center' as const, color: colors.text.disabled }}
-          title="Generation this individual was born in"
+          title="Generation this specimen was born in"
           data-help={HELP_BORN}
         >
           {'\uD83D\uDC23'}
@@ -634,14 +634,14 @@ const ChildrenList: React.FC<{
 // ---------------------------------------------------------------------------
 
 interface PartnerEntry {
-  partner: Individual;
+  partner: Specimen;
   pairIndex: number;
   side: 'A' | 'B'; // which side this parent was on
 }
 
 const ActualParentsList: React.FC<{
   breedingData: GenerationBreedingData;
-  onSelect: (ind: Individual, source: string) => void;
+  onSelect: (ind: Specimen, source: string) => void;
   selectedId: number | null;
 }> = ({ breedingData, onSelect, selectedId }) => {
   const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
@@ -676,7 +676,7 @@ const ActualParentsList: React.FC<{
     return partnerMap.get(selectedParentId) ?? [];
   }, [partnerMap, selectedParentId]);
 
-  const partnerIndividuals = useMemo(() => partners.map((p) => p.partner), [partners]);
+  const partnerSpecimens = useMemo(() => partners.map((p) => p.partner), [partners]);
 
   const partnerPartnerCounts = useMemo(() => {
     const counts = new Map<number, number>();
@@ -687,7 +687,7 @@ const ActualParentsList: React.FC<{
   }, [partners, partnerMap]);
 
   const handleSelectParent = useCallback(
-    (ind: Individual) => {
+    (ind: Specimen) => {
       setSelectedParentId(ind.id);
       onSelect(ind, 'Actual parents');
     },
@@ -703,7 +703,7 @@ const ActualParentsList: React.FC<{
     <div style={actualParentStyles.container}>
       <div style={actualParentStyles.primary}>
         <div style={actualParentStyles.subHeader}>
-          Individual parents <span style={bStyles.count}>({breedingData.actualParents.length})</span>
+          Specimen parents <span style={bStyles.count}>({breedingData.actualParents.length})</span>
         </div>
         <VirtualList
           items={breedingData.actualParents}
@@ -720,7 +720,7 @@ const ActualParentsList: React.FC<{
             : 'Select a parent'}
         </div>
         <VirtualList
-          items={partnerIndividuals}
+          items={partnerSpecimens}
           onSelect={(ind) => onSelect(ind, 'Partner')}
           selectedId={selectedId !== selectedParentId ? selectedId : null}
           emptyText={selectedParentId !== null ? 'No partners found' : 'Select a parent to see partners'}
@@ -924,8 +924,8 @@ function sourceToOrigin(source: string, activeCategory: CategoryKey, generation:
 }
 
 const CATEGORY_HELP: Record<CategoryKey, string> = {
-  'Eligible parents': 'All individuals from the previous generation whose fitness qualified them for the selection pool',
-  'Actual parents': 'The specific individuals chosen by roulette-wheel selection to breed this generation',
+  'Eligible parents': 'All specimens from the previous generation whose fitness qualified them for the selection pool',
+  'Actual parents': 'The specific specimens chosen by roulette-wheel selection to breed this generation',
   'Children': 'All offspring produced by crossover — each pair of parents creates two children by swapping gene segments',
   'Mutations': 'Children that had a random gene changed after crossover — introduces variety to escape local optima',
 };
@@ -940,7 +940,7 @@ const CATEGORY_GLOSSARY: Record<CategoryKey, string> = {
 function getCategoryData(
   breedingData: GenerationBreedingData,
   category: CategoryKey,
-): Individual[] {
+): Specimen[] {
   switch (category) {
     case 'Eligible parents': return breedingData.eligibleParents;
     case 'Actual parents': return breedingData.actualParents;
@@ -956,7 +956,7 @@ function getCategoryData(
 export const BreedingListboxes: React.FC<Props> = ({
   breedingData,
   generation,
-  onSelectIndividual,
+  onSelectSpecimen,
   selectedCategory,
   onCategoryChange,
 }) => {
@@ -977,14 +977,14 @@ export const BreedingListboxes: React.FC<Props> = ({
   }, [dropdownOpen]);
 
   const handleSelect = useCallback(
-    (ind: Individual, source: string) => {
+    (ind: Specimen, source: string) => {
       setSelectedId(ind.id);
       if (source !== 'Mutations') setMutationSide(null);
       // Map legacy source strings to structured PoolOrigin
       const origin = sourceToOrigin(source, selectedCategory, generation);
-      onSelectIndividual(ind, origin);
+      onSelectSpecimen(ind, origin);
     },
-    [onSelectIndividual, selectedCategory, generation],
+    [onSelectSpecimen, selectedCategory, generation],
   );
 
   const categoryData = breedingData

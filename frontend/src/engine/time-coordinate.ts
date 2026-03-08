@@ -1,13 +1,13 @@
-import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, PipelineRole, GenerationPipeline, PipelineOp, Individual, GenerationResult, Age, MutationRecord } from './types';
+import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, PipelineRole, GenerationPipeline, PipelineOp, Specimen, GenerationResult, Age, MutationRecord } from './types';
 import type { CategoryKey } from '../components/BreedingListboxes';
-import { cloneIndividual } from './individual';
+import { cloneSpecimen } from './specimen';
 
 /** Total number of atomic operations per generation. */
 export const OPS_PER_GENERATION = 7;
 
 /** The ordered list of atomic operations within a single generation. */
 export const GENERATION_OPS: OpDefinition[] = [
-  { index: 0, name: 'Age individuals',       type: 'transform', category: 'Aging' },
+  { index: 0, name: 'Age specimens',          type: 'transform', category: 'Aging' },
   { index: 1, name: 'Remove elders',        type: 'remove',    category: 'Pruning' },
   { index: 2, name: 'Select breeding pairs', type: 'transform', category: 'Selection' },
   { index: 3, name: 'Mark pairs as mated',   type: 'transform', category: 'Crossover' },
@@ -21,22 +21,21 @@ export function getOp(y: number): OpDefinition {
   return GENERATION_OPS[y]!;
 }
 
-/** Number of screens per operation (before, transform, after). */
-export const SCREENS_PER_OP = 3;
+/** Number of screens per operation (before, after). */
+export const SCREENS_PER_OP = 2;
 
 /** Total screens per generation. */
 export const SCREENS_PER_GENERATION = OPS_PER_GENERATION * SCREENS_PER_OP;
 
 /** Format a TimeCoordinate as "x.y.t". */
 export function formatCoordinate(tc: TimeCoordinate): string {
-  const boundaryLabel = tc.boundary === 0 ? '0' : tc.boundary === 1 ? 't' : '1';
-  return `${tc.generation}.${tc.operation}.${boundaryLabel}`;
+  return `${tc.generation}.${tc.operation}.${tc.boundary}`;
 }
 
 /** Human-readable label for a coordinate, e.g. "Selection — Select breeding pairs (before)". */
 export function coordinateLabel(tc: TimeCoordinate): string {
   const op = getOp(tc.operation);
-  const phaseLabel = tc.boundary === 0 ? 'before' : tc.boundary === 1 ? 'transform' : 'after';
+  const phaseLabel = tc.boundary === 0 ? 'before' : 'after';
   return `${op.category} — ${op.name} (${phaseLabel})`;
 }
 
@@ -82,6 +81,8 @@ export function categoryToOrigin(category: CategoryKey, generation: number): Poo
         coordinate: { generation, operation: 5, boundary: 1 },
         pool: 'chromosomes',
       };
+    default:
+      throw new Error(`Unknown category: ${category as string}`);
   }
 }
 
@@ -104,23 +105,23 @@ const ROLE_FOR_POOL: Record<PoolName, PipelineRole> = {
 
 /**
  * Get the master-list snapshot at a given operation and boundary from the pipeline.
- * ops[y][z]: y = operation (0–6), z = boundary (0=before, 1=transform, 2=after).
+ * Boundary 0 = before (internal slot 0), boundary 1 = after (internal slot 2).
  */
-export function getPipelineState(pipeline: GenerationPipeline, op: number, boundary: 0 | 1 | 2): Individual[] {
-  return pipeline.ops[op]![boundary];
+export function getPipelineState(pipeline: GenerationPipeline, op: number, boundary: 0 | 1): Specimen[] {
+  return pipeline.ops[op]![boundary === 0 ? 0 : 2];
 }
 
 /**
- * Resolve a named pool's individuals from the pipeline at a given coordinate.
- * Filters the master-list snapshot by each individual's pipelineRole field.
- * Returns empty array if no individuals have that role at this coordinate.
+ * Resolve a named pool's specimens from the pipeline at a given coordinate.
+ * Filters the master-list snapshot by each specimen's pipelineRole field.
+ * Returns empty array if no specimens have that role at this coordinate.
  */
 export function resolvePoolFromPipeline(
   pool: PoolName,
   pipeline: GenerationPipeline,
   op: number,
-  boundary: 0 | 1 | 2,
-): Individual[] {
+  boundary: 0 | 1,
+): Specimen[] {
   const role = ROLE_FOR_POOL[pool];
   return getPipelineState(pipeline, op, boundary).filter(i => i.pipelineRole === role);
 }
@@ -132,86 +133,120 @@ export function resolvePoolFromPipeline(
 export function getPoolsAtCoordinate(tc: TimeCoordinate): PoolName[] {
   const { operation: y, boundary: z } = tc;
 
-  // Transform pages (z=1) show input pools — the visualization handles the rest
-  // y=0 Age individuals: children→adults, adults→elders
+  // y=0 Age specimens: children→adults, adults→elders
   if (y === 0 && z === 0) return ['oldParents', 'previousChildren'];
-  if (y === 0 && z === 1) return ['oldParents', 'previousChildren'];
-  if (y === 0 && z === 2) return ['eligibleAdults', 'retiredParents'];
+  if (y === 0 && z === 1) return ['eligibleAdults', 'retiredParents'];
 
   // y=1 Remove elders: remove
   if (y === 1 && z === 0) return ['eligibleAdults', 'retiredParents'];
-  if (y === 1 && z === 1) return ['eligibleAdults', 'retiredParents'];
-  if (y === 1 && z === 2) return ['eligibleAdults'];
+  if (y === 1 && z === 1) return ['eligibleAdults'];
 
   // y=2 Select breeding pairs: transform
   if (y === 2 && z === 0) return ['eligibleAdults'];
-  if (y === 2 && z === 1) return ['eligibleAdults'];
-  if (y === 2 && z === 2) return ['selectedPairs', 'unselected'];
+  if (y === 2 && z === 1) return ['selectedPairs', 'unselected'];
 
   // y=3 Mark pairs as mated: transform (unselected persist alongside)
   if (y === 3 && z === 0) return ['selectedPairs', 'unselected'];
-  if (y === 3 && z === 1) return ['selectedPairs', 'unselected'];
-  if (y === 3 && z === 2) return ['matedParents', 'unselected'];
+  if (y === 3 && z === 1) return ['matedParents', 'unselected'];
 
   // y=4 Generate chromosomes: add (unselected persist alongside)
   if (y === 4 && z === 0) return ['matedParents', 'unselected'];
-  if (y === 4 && z === 1) return ['matedParents', 'unselected'];
-  if (y === 4 && z === 2) return ['matedParents', 'unselected', 'chromosomes'];
+  if (y === 4 && z === 1) return ['matedParents', 'unselected', 'chromosomes'];
 
   // y=5 Apply mutations: transform
   if (y === 5 && z === 0) return ['chromosomes', 'matedParents', 'unselected'];
   if (y === 5 && z === 1) return ['chromosomes', 'matedParents', 'unselected'];
-  if (y === 5 && z === 2) return ['chromosomes', 'matedParents', 'unselected'];
 
   // y=6 Realize children: transform
   if (y === 6 && z === 0) return ['chromosomes', 'matedParents', 'unselected'];
-  if (y === 6 && z === 1) return ['chromosomes', 'matedParents', 'unselected'];
-  if (y === 6 && z === 2) return ['finalChildren', 'matedParents', 'unselected'];
+  if (y === 6 && z === 1) return ['finalChildren', 'matedParents', 'unselected'];
 
   return [];
 }
 
 /** Description of what each operation's transform does, for the transform screen. */
-const TRANSFORM_DESCRIPTIONS: Record<number, { title: string; description: string; detail: string }> = {
+const TRANSFORM_DESCRIPTIONS: Record<number, { title: string; description: string; detail: string; pseudoCode: string[] }> = {
   0: {
-    title: 'Aging Individuals',
-    description: 'Increment all individuals\' age by 1.',
-    detail: 'Every individual in the population has its age incremented by 1.\n\nAge lifecycle: 0 (chromosome) → 1 (child) → 2 (adult) → 3 (elder → removed).',
+    title: 'Aging Specimens',
+    description: 'Increment all specimens\' age by 1.',
+    detail: 'Every specimen in the population has its age incremented by 1.\n\nAge lifecycle: 0 (chromosome) → 1 (child) → 2 (adult) → 3 (elder → removed).',
+    pseudoCode: [
+      'for each specimen in population:',
+      '  specimen.age += 1',
+    ],
   },
   1: {
     title: 'Retiring Old Parents',
     description: 'Retired parents are removed from the population.',
-    detail: 'Only the promoted adults (former children) remain as the eligible breeding pool. This prevents individuals from persisting across multiple generations.',
+    detail: 'Only the promoted adults (former children) remain as the eligible breeding pool. This prevents specimens from persisting across multiple generations.',
+    pseudoCode: [
+      'for each specimen in population:',
+      '  if specimen.age == 3:',
+      '    remove(specimen)',
+    ],
   },
   2: {
     title: 'Selecting Breeding Pairs',
     description: 'Fitness-proportionate roulette wheel selects parents for reproduction.',
-    detail: 'A 10,000-slot roulette wheel is filled proportionally to fitness scores. Pairs are drawn by spinning twice. Higher-fitness individuals are more likely to be selected, but any eligible adult can be chosen. Unselected adults persist alongside selected pairs and are naturally removed through aging.',
+    detail: 'A 10,000-slot array is built where each specimen gets slots proportional to its share of total fitness. For example, if a specimen has fitness 14 and the population\'s total fitness is 1,400, it receives 14/1,400 \u00d7 10,000 = 100 slots. To form a pair, two random slots are picked \u2014 the specimens occupying those slots become parents. Higher fitness \u2192 more slots \u2192 higher chance of selection, but even low-fitness specimens can be chosen.',
+    pseudoCode: [
+      'total = sum of all fitness scores',
+      'for each specimen:',
+      '  slots = fitness / total × 10,000',
+      '  wheel.fill(specimen, slots)',
+      'while pairs < targetCount:',
+      '  parentA = wheel[randomIndex]',
+      '  parentB = wheel[randomIndex]  // ≠ A',
+      '  pairs.add(parentA, parentB)',
+    ],
   },
   3: {
     title: 'Marking Pairs as Mated',
     description: 'Selected pairs are formally assigned as breeding partners.',
     detail: 'Each pair (A, B) is locked in for crossover. The pair ordering determines which parent contributes the left vs. right portion of the child chromosome.',
+    pseudoCode: [
+      'for each (parentA, parentB) in pairs:',
+      '  parentA.role = mated',
+      '  parentB.role = mated',
+    ],
   },
   4: {
     title: 'Generating Chromosomes',
     description: 'Single-point crossover creates two child chromosomes per pair.',
     detail: 'A random crossover point is chosen within the configured range. Child A gets genes [0..point] from parent A and [point+1..7] from parent B. Child B gets the inverse. Each pair produces exactly two offspring.',
+    pseudoCode: [
+      'for each (parentA, parentB) in pairs:',
+      '  point = random(crossMin, crossMax)',
+      '  childA = parentA[0..point]',
+      '        + parentB[point+1..7]',
+      '  childB = parentB[0..point]',
+      '        + parentA[point+1..7]',
+    ],
   },
   5: {
     title: 'Applying Mutations',
     description: 'Random gene mutations are applied based on the mutation rate.',
     detail: 'Each child has an independent probability of mutation (configured rate). If selected, one random gene position is replaced with a random value [0-7]. Mutations introduce diversity that can escape local optima.',
+    pseudoCode: [
+      'for each child in children:',
+      '  if random() < mutationRate:',
+      '    gene = randomIndex(0, 7)',
+      '    child[gene] = randomValue(0, 7)',
+    ],
   },
   6: {
     title: 'Realizing Children',
-    description: 'Raw chromosomes are evaluated and become full individuals.',
-    detail: 'Each chromosome is assessed for fitness (counting non-attacking queen pairs). The chromosomes become proper individuals with IDs, fitness scores, and generation metadata — ready for the next generation cycle.',
+    description: 'Chromosomes are promoted to children by aging from 0 to 1.',
+    detail: 'Each chromosome (age 0) already has its fitness score and ID from crossover. The birth step simply advances their age from 0 (chromosome) to 1 (child), making them full participants in the next generation cycle.',
+    pseudoCode: [
+      'for each chromosome in chromosomes:',
+      '  chromosome.age = 1  // child',
+    ],
   },
 };
 
 /** Get the transform description for an operation index. */
-export function getTransformDescription(operationIndex: number): { title: string; description: string; detail: string } {
+export function getTransformDescription(operationIndex: number): { title: string; description: string; detail: string; pseudoCode: string[] } {
   return TRANSFORM_DESCRIPTIONS[operationIndex]!;
 }
 
@@ -244,7 +279,7 @@ export function reconstructPipeline(
   // Build mutation info map (child id → record)
   const mutationMap = new Map<number, MutationRecord>();
   for (const rec of breedingData.mutationRecords) {
-    mutationMap.set(rec.individual.id, rec);
+    mutationMap.set(rec.specimen.id, rec);
   }
 
   // Build partner ID map from breeding pairs
@@ -258,18 +293,18 @@ export function reconstructPipeline(
     partnerIdMap.get(b.id)!.add(a.id);
   }
 
-  // Helper: tag a cloned individual with a role (and optional extra fields)
-  const tag = (ind: Individual, role: PipelineRole, extra?: Partial<Individual>): Individual => ({
-    ...cloneIndividual(ind), pipelineRole: role, ...extra,
+  // Helper: tag a cloned specimen with a role (and optional extra fields)
+  const tag = (spec: Specimen, role: PipelineRole, extra?: Partial<Specimen>): Specimen => ({
+    ...cloneSpecimen(spec), pipelineRole: role, ...extra,
   });
 
   // Transform slot (z=1) is a deep-clone of before, matching step() behavior.
-  const makeOp = (before: Individual[], after: Individual[]): PipelineOp =>
-    [before, before.map(cloneIndividual), after];
+  const makeOp = (before: Specimen[], after: Specimen[]): PipelineOp =>
+    [before, before.map(cloneSpecimen), after];
 
   // Build pre-mutation chromosomes: undo mutation if it occurred, tag with parentage
   const targetCount = breedingData.allChildren.length;
-  const preMutationChromosomes: Individual[] = [];
+  const preMutationChromosomes: Specimen[] = [];
   let count = 0;
   for (let i = 0; i < breedingData.aChildren.length && count < targetCount; i++) {
     const aChild = breedingData.aChildren[i]!;

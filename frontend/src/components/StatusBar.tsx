@@ -30,7 +30,7 @@ export const StatusBar: React.FC<Props> = ({
           highlight={bestFitness === MAX_FITNESS}
           help="Highest fitness score in the current population — 28/28 means a valid solution"
         />
-        <Stat label="Avg Fitness" value={avgFitness.toFixed(1)} help="Mean fitness across all individuals in the current generation" />
+        <Stat label="Avg Fitness" value={avgFitness.toFixed(1)} help="Mean fitness across all specimens in the current generation" />
         <Stat
           label="Status"
           value={solved ? 'SOLVED' : generation === 0 ? 'Ready' : 'Running'}

@@ -8,7 +8,7 @@
  * Matches the C# InitialSettings / queenspuzzle configurable parameters.
  */
 export interface AlgorithmConfig {
-  /** Number of individuals in the population. C# default: 10,000. */
+  /** Number of specimens in the population. C# default: 10,000. */
   populationSize: number;
   /** Crossover position range [min, max] inclusive. C# default: [1, 6]. */
   crossoverRange: [number, number];
@@ -29,14 +29,14 @@ export const MAX_FITNESS = 28;
 export const BOARD_SIZE = 8;
 
 /**
- * Represents a single individual (chromosome) in the population.
- * Each individual is an array of 8 integers (0-7), where index = column
+ * Represents a single specimen (chromosome) in the population.
+ * Each specimen is an array of 8 integers (0-7), where index = column
  * and value = row position of the queen in that column.
  */
 /** Lifecycle age: 0 = chromosome, 1 = child, 2 = adult, 3 = elder. */
 export type Age = 0 | 1 | 2 | 3;
 
-/** Role of an individual within the generation pipeline at a snapshot boundary. */
+/** Role of a specimen within the generation pipeline at a snapshot boundary. */
 export type PipelineRole =
   | 'oldParent'       // op 0 before: prior-gen adults (or seed parents at gen 1)
   | 'previousChild'   // op 0 before: prior-gen children (to become adults)
@@ -48,7 +48,7 @@ export type PipelineRole =
   | 'chromosome'      // op 4 after: new child pre-realization, crossover data set
   | 'finalChild';     // op 6 after: chromosome promoted to age-1 child
 
-export interface Individual {
+export interface Specimen {
   /** Globally unique numeric ID. */
   id: number;
   /** Index within the generation (used for display: gen.localIndex). */
@@ -57,7 +57,7 @@ export interface Individual {
   solution: number[];
   /** Fitness score (0-28). 28 = perfect solution. */
   fitness: number;
-  /** The generation number in which this individual was created. */
+  /** The generation number in which this specimen was created. */
   bornGeneration?: number;
   /** Lifecycle age: 0 = chromosome, 1 = child, 2 = adult, 3 = elder. */
   age: Age;
@@ -69,7 +69,7 @@ export interface Individual {
   parentAId?: number;
   /** ID of the B-side parent (set on chromosomes/children). */
   parentBId?: number;
-  /** Crossover split position used when this individual was bred. */
+  /** Crossover split position used when this specimen was bred. */
   crossoverPoint?: number;
   /** Whether this chromosome was mutated during Apply Mutations (op 5). */
   mutated?: boolean;
@@ -84,7 +84,7 @@ export interface GenerationSummary {
   generationNumber: number;
   bestFitness: number;
   avgFitness: number;
-  bestIndividual: number[];
+  bestSpecimen: number[];
   mutationCount: number;
 }
 
@@ -102,10 +102,10 @@ export interface StepStatistics {
 }
 
 /**
- * Records what a mutation changed on an individual.
+ * Records what a mutation changed on a specimen.
  */
 export interface MutationRecord {
-  individual: Individual;
+  specimen: Specimen;
   /** The full solution array before the mutation was applied. */
   preMutationSolution: number[];
   /** Fitness before the mutation. */
@@ -120,15 +120,15 @@ export interface MutationRecord {
  * All arrays sorted by fitness descending.
  */
 export interface GenerationBreedingData {
-  aParents: Individual[];
-  bParents: Individual[];
-  aChildren: Individual[];
-  bChildren: Individual[];
-  actualParents: Individual[];
-  mutations: Individual[];
+  aParents: Specimen[];
+  bParents: Specimen[];
+  aChildren: Specimen[];
+  bChildren: Specimen[];
+  actualParents: Specimen[];
+  mutations: Specimen[];
   mutationRecords: MutationRecord[];
-  eligibleParents: Individual[];
-  allChildren: Individual[];
+  eligibleParents: Specimen[];
+  allChildren: Specimen[];
   /** crossoverPoints[i] = splice position used for breeding pair i. */
   crossoverPoints: number[];
 }
@@ -168,12 +168,12 @@ export interface OpDefinition {
 
 /**
  * A precise position in the GA pipeline.
- * Format: x.y.t where x=generation, y=operation (0–6), t=phase (0=before, 1=transform, 2=after).
+ * Format: x.y.t where x=generation, y=operation (0–6), t=phase (0=before, 1=after).
  */
 export interface TimeCoordinate {
   generation: number;
   operation: number;
-  boundary: 0 | 1 | 2;
+  boundary: 0 | 1;
 }
 
 /** Named population pool at a given pipeline position. */
@@ -188,7 +188,7 @@ export type PoolName =
   | 'chromosomes'
   | 'finalChildren';
 
-/** Identifies which pool an individual was observed in. */
+/** Identifies which pool a specimen was observed in. */
 export interface PoolOrigin {
   coordinate: TimeCoordinate;
   pool: PoolName;
@@ -201,17 +201,17 @@ export interface PoolOrigin {
 // ============================================================================
 
 /**
- * Flat master list of all individuals present at one boundary of one operation.
- * Pool membership is derived from each individual's `pipelineRole` field.
+ * Flat master list of all specimens present at one boundary of one operation.
+ * Pool membership is derived from each specimen's `pipelineRole` field.
  * Use `resolvePoolFromPipeline` to filter by pool name.
  */
-export type PipelineSnapshot = Individual[];
+export type PipelineSnapshot = Specimen[];
 
 /**
  * Three snapshots per operation: before (z=0), transform (z=1), after (z=2).
  * Transform is deep-cloned from before independently — currently the same data,
  * but kept separate so future work can customize what the transform screen shows
- * (e.g. individuals mid-transition, annotated with what's changing).
+ * (e.g. specimens mid-transition, annotated with what's changing).
  */
 export type PipelineOp = [PipelineSnapshot, PipelineSnapshot, PipelineSnapshot];
 
@@ -227,15 +227,15 @@ export interface GenerationResult {
   generationNumber: number;
   bestFitness: number;
   avgFitness: number;
-  bestIndividual: Individual;
+  bestSpecimen: Specimen;
   mutationCount: number;
   solved: boolean;
-  solutionIndividual: Individual | null;
+  solutionSpecimen: Specimen | null;
   /** The parent pair for the last breeding event (for visualization). */
-  lastParentA: Individual | null;
-  lastParentB: Individual | null;
-  lastChildA: Individual | null;
-  lastChildB: Individual | null;
+  lastParentA: Specimen | null;
+  lastParentB: Specimen | null;
+  lastChildA: Specimen | null;
+  lastChildB: Specimen | null;
   /** Full breeding data for listbox display. */
   breedingData: GenerationBreedingData;
   /** Per-step statistics. */

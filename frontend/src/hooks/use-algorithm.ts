@@ -4,7 +4,7 @@ import type {
   CumulativeStatistics,
   GenerationResult,
   GenerationSummary,
-  Individual,
+  Specimen,
 } from '../engine/types';
 import { AlgorithmRunner } from '../engine/algorithm-runner';
 
@@ -18,9 +18,9 @@ export function useAlgorithm() {
   const [generation, setGeneration] = useState(0);
   const [bestFitness, setBestFitness] = useState(0);
   const [avgFitness, setAvgFitness] = useState(0);
-  const [bestIndividual, setBestIndividual] = useState<Individual | null>(null);
+  const [bestSpecimen, setBestSpecimen] = useState<Specimen | null>(null);
   const [solved, setSolved] = useState(false);
-  const [solutionIndividual, setSolutionIndividual] = useState<Individual | null>(null);
+  const [solutionSpecimen, setSolutionSpecimen] = useState<Specimen | null>(null);
   const [generationSummaries, setGenerationSummaries] = useState<GenerationSummary[]>([]);
   const [lastResult, setLastResult] = useState<GenerationResult | null>(null);
   const [algorithmConfig, setAlgorithmConfig] = useState<AlgorithmConfig | null>(null);
@@ -30,12 +30,12 @@ export function useAlgorithm() {
     setGeneration(result.generationNumber);
     setBestFitness(result.bestFitness);
     setAvgFitness(result.avgFitness);
-    setBestIndividual(result.bestIndividual);
+    setBestSpecimen(result.bestSpecimen);
     setSolved(result.solved);
     setLastResult(result);
 
-    if (result.solved && result.solutionIndividual) {
-      setSolutionIndividual(result.solutionIndividual);
+    if (result.solved && result.solutionSpecimen) {
+      setSolutionSpecimen(result.solutionSpecimen);
     }
 
     setGenerationSummaries((prev) => [
@@ -86,9 +86,9 @@ export function useAlgorithm() {
       setGeneration(0);
       setBestFitness(0);
       setAvgFitness(0);
-      setBestIndividual(null);
+      setBestSpecimen(null);
       setSolved(false);
-      setSolutionIndividual(null);
+      setSolutionSpecimen(null);
       setGenerationSummaries([]);
       setLastResult(null);
       setAlgorithmConfig(config);
@@ -127,12 +127,12 @@ export function useAlgorithm() {
       setGeneration(finalResult.generationNumber);
       setBestFitness(finalResult.bestFitness);
       setAvgFitness(finalResult.avgFitness);
-      setBestIndividual(finalResult.bestIndividual);
+      setBestSpecimen(finalResult.bestSpecimen);
       setSolved(finalResult.solved);
       setLastResult(finalResult);
 
-      if (finalResult.solved && finalResult.solutionIndividual) {
-        setSolutionIndividual(finalResult.solutionIndividual);
+      if (finalResult.solved && finalResult.solutionSpecimen) {
+        setSolutionSpecimen(finalResult.solutionSpecimen);
       }
 
       // Add all intermediate summaries to chart
@@ -152,9 +152,9 @@ export function useAlgorithm() {
     setGeneration(0);
     setBestFitness(0);
     setAvgFitness(0);
-    setBestIndividual(null);
+    setBestSpecimen(null);
     setSolved(false);
-    setSolutionIndividual(null);
+    setSolutionSpecimen(null);
     setGenerationSummaries([]);
     setLastResult(null);
     setAlgorithmConfig(null);
@@ -179,9 +179,9 @@ export function useAlgorithm() {
     generation,
     bestFitness,
     avgFitness,
-    bestIndividual,
+    bestSpecimen,
     solved,
-    solutionIndividual,
+    solutionSpecimen,
     generationSummaries,
     lastResult,
     algorithmConfig,

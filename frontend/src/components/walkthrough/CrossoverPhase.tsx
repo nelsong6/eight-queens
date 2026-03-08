@@ -1,18 +1,18 @@
 import React from 'react';
-import type { Individual, GenerationResult, PoolOrigin } from '../../engine/types';
+import type { Specimen, GenerationResult, PoolOrigin } from '../../engine/types';
 
 interface Props {
   result: GenerationResult;
   pairIndex: number;
   onPairChange: (index: number) => void;
-  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
+  onSelectSpecimen: (specimen: Specimen, origin: PoolOrigin) => void;
 }
 
 export const CrossoverPhase: React.FC<Props> = ({
   result,
   pairIndex,
   onPairChange,
-  onSelectIndividual,
+  onSelectSpecimen,
 }) => {
   const { breedingData } = result;
   const totalPairs = breedingData.aParents.length;
@@ -44,7 +44,7 @@ export const CrossoverPhase: React.FC<Props> = ({
       </div>
 
       {/* Pair navigation */}
-      <div style={styles.pairNav} data-help="Browse through individual breeding pairs to see how genes were exchanged">
+      <div style={styles.pairNav} data-help="Browse through specimen breeding pairs to see how genes were exchanged">
         <button
           onClick={() => onPairChange(Math.max(0, idx - 1))}
           disabled={idx === 0}
@@ -70,21 +70,21 @@ export const CrossoverPhase: React.FC<Props> = ({
       <div style={styles.sectionLabel} data-help="The two parent chromosomes before crossover">Parents</div>
       <ChromosomeRow
         label="Parent A"
-        individual={parentA}
+        specimen={parentA}
         colorLeft={COLORS.parentA}
         colorRight={COLORS.parentA}
         splicePoint={crossoverPoint}
         showSplice={false}
-        onView={() => onSelectIndividual(parentA, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'A' })}
+        onView={() => onSelectSpecimen(parentA, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'A' })}
       />
       <ChromosomeRow
         label="Parent B"
-        individual={parentB}
+        specimen={parentB}
         colorLeft={COLORS.parentB}
         colorRight={COLORS.parentB}
         splicePoint={crossoverPoint}
         showSplice={false}
-        onView={() => onSelectIndividual(parentB, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'B' })}
+        onView={() => onSelectSpecimen(parentB, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'B' })}
       />
 
       {/* Splice indicator */}
@@ -115,21 +115,21 @@ export const CrossoverPhase: React.FC<Props> = ({
       <div style={styles.sectionLabel} data-help="Resulting children after gene exchange at the crossover point">Children</div>
       <ChromosomeRow
         label="Child A"
-        individual={childA}
+        specimen={childA}
         colorLeft={COLORS.parentA}
         colorRight={COLORS.parentB}
         splicePoint={crossoverPoint}
         showSplice={true}
-        onView={() => onSelectIndividual(childA, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'A' })}
+        onView={() => onSelectSpecimen(childA, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'A' })}
       />
       <ChromosomeRow
         label="Child B"
-        individual={childB}
+        specimen={childB}
         colorLeft={COLORS.parentB}
         colorRight={COLORS.parentA}
         splicePoint={crossoverPoint}
         showSplice={true}
-        onView={() => onSelectIndividual(childB, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'B' })}
+        onView={() => onSelectSpecimen(childB, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'B' })}
       />
     </div>
   );
@@ -146,20 +146,20 @@ const COLORS = {
 
 const ChromosomeRow: React.FC<{
   label: string;
-  individual: Individual;
+  specimen: Specimen;
   colorLeft: string;
   colorRight: string;
   splicePoint: number;
   showSplice: boolean;
   onView: () => void;
-}> = ({ label, individual, colorLeft, colorRight, splicePoint, showSplice, onView }) => (
+}> = ({ label, specimen, colorLeft, colorRight, splicePoint, showSplice, onView }) => (
   <div style={styles.chromRow}>
     <div style={styles.chromLabel}>
       <span>{label}</span>
-      <button onClick={onView} style={styles.viewBtn} data-help="Show this individual's queen placement on the chessboard">View</button>
+      <button onClick={onView} style={styles.viewBtn} data-help="Show this specimen's queen placement on the chessboard">View</button>
     </div>
     <div style={styles.chromBar}>
-      {individual.solution.map((gene, i) => (
+      {specimen.solution.map((gene, i) => (
         <div
           key={i}
           style={{
@@ -175,7 +175,7 @@ const ChromosomeRow: React.FC<{
         </div>
       ))}
     </div>
-    <span style={styles.chromFitness}>f:{individual.fitness}</span>
+    <span style={styles.chromFitness}>f:{specimen.fitness}</span>
   </div>
 );
 

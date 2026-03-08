@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import type { TimeCoordinate } from '../engine/types';
-import { getOp } from '../engine/time-coordinate';
 import { colors } from '../colors';
 
 type SessionPhase = 'config' | 'running' | 'review';
@@ -21,7 +19,7 @@ interface Props {
   solved: boolean;
   walkthroughPhase: number | null;
   isMicro: boolean;
-  coordinate?: TimeCoordinate;
+  barStyle?: React.CSSProperties;
 }
 
 const STEP_PRESETS = [1, 2, 5, 10, 25, 50, 100, 1000];
@@ -42,7 +40,7 @@ export const Controls: React.FC<Props> = ({
   solved,
   walkthroughPhase,
   isMicro,
-  coordinate,
+  barStyle,
 }) => {
   const [stepCount, setStepCount] = useState('1');
 
@@ -50,31 +48,7 @@ export const Controls: React.FC<Props> = ({
   const isWalking = walkthroughPhase !== null;
 
   return (
-    <div style={styles.bar}>
-      {coordinate && (() => {
-        const op = getOp(coordinate.operation);
-        const boundaryLabel = coordinate.boundary === 0 ? 'BEFORE' : coordinate.boundary === 1 ? 'TRANSFORM' : 'AFTER';
-        const boundaryValue = coordinate.boundary === 0 ? '0' : coordinate.boundary === 1 ? 't' : '1';
-        return (
-          <div style={styles.coordOverlay}>
-            <div style={styles.coordSegment} data-help={`Generation ${coordinate.generation} — the current evolutionary cycle`}>
-              <span style={styles.coordDigit}>{coordinate.generation}</span>
-              <span style={styles.coordLabel}>Generation</span>
-            </div>
-            <span style={styles.coordDot}>.</span>
-            <div style={styles.coordSegment} data-help={`Operation ${coordinate.operation} — "${op.name}" (${op.category})`}>
-              <span style={styles.coordDigit}>{coordinate.operation}</span>
-              <span style={styles.coordLabel}>Operation</span>
-            </div>
-            <span style={styles.coordDot}>.</span>
-            <div style={styles.coordSegment} data-help={`${boundaryLabel} — ${coordinate.boundary === 0 ? 'input state before the operation runs' : coordinate.boundary === 1 ? 'the operation in progress' : 'output state after the operation completes'}`}>
-              <span style={styles.coordDigit}>{boundaryValue}</span>
-              <span style={styles.coordLabel}>Progress</span>
-            </div>
-          </div>
-        );
-      })()}
-
+    <div style={{ ...styles.bar, ...barStyle }}>
       {/* Playback */}
       <div style={styles.group}>
         <button onClick={onReset} className="btn" data-help="Clear all progress and return to configuration" style={styles.btn} title="Rewind">
@@ -102,7 +76,7 @@ export const Controls: React.FC<Props> = ({
             onClick={() => onPlay(parseInt(stepCount, 10) || 1)}
             className="btn"
             disabled={!canAct}
-            data-help="Continuously run full generations automatically"
+            data-help={isMicro ? "Auto-step through pipeline phases" : "Continuously run full generations automatically"}
             style={{ ...styles.btn, opacity: !canAct ? 0.5 : 1 }}
           >
             ▶
@@ -114,18 +88,18 @@ export const Controls: React.FC<Props> = ({
 
       {/* Step controls — split button */}
       <div style={styles.splitGroup} data-help={isMicro ? 'Advance to the next pipeline step (before/after each operation)' : 'Advance by N generations — pick a preset or type a custom number'}>
-            <input
-              list="step-presets"
-              value={stepCount}
-              onChange={(e) => setStepCount(e.target.value)}
-              disabled={solved}
-              style={{ ...styles.splitInput, opacity: solved ? 0.5 : 1 }}
-            />
-            <datalist id="step-presets">
-              {STEP_PRESETS.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
+        <input
+          list="step-presets"
+          value={stepCount}
+          onChange={(e) => setStepCount(e.target.value)}
+          disabled={solved}
+          style={{ ...styles.splitInput, opacity: solved ? 0.5 : 1 }}
+        />
+        <datalist id="step-presets">
+          {STEP_PRESETS.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
         <button
           onClick={() => {
             if (isMicro) { onStep(); return; }
@@ -173,54 +147,12 @@ export const Controls: React.FC<Props> = ({
 
 const styles: Record<string, React.CSSProperties> = {
   bar: {
-    position: 'relative' as const,
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     padding: '14px 24px',
     backgroundColor: colors.bg.raised,
     borderBottom: `1px solid ${colors.border.subtle}`,
-  },
-  coordOverlay: {
-    position: 'absolute' as const,
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 0,
-    pointerEvents: 'none' as const,
-  },
-  coordSegment: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    gap: 1,
-    pointerEvents: 'auto' as const,
-  },
-  coordDigit: {
-    fontSize: 28,
-    fontFamily: 'monospace',
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    fontVariantNumeric: 'tabular-nums',
-    minWidth: 28,
-    textAlign: 'center' as const,
-    lineHeight: 1,
-  },
-  coordLabel: {
-    fontSize: 8,
-    fontFamily: 'monospace',
-    color: colors.text.disabled,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1,
-  },
-  coordDot: {
-    fontSize: 28,
-    fontFamily: 'monospace',
-    fontWeight: 'bold',
-    color: colors.border.strong,
-    lineHeight: 1,
   },
   group: {
     display: 'flex',

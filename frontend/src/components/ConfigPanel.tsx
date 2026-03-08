@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { AlgorithmConfig, StepStatistics, CumulativeStatistics } from '../engine/types';
-import { DEFAULT_CONFIG, MAX_FITNESS } from '../engine/types';
+import { MAX_FITNESS } from '../engine/types';
 import type { Preset } from '../data/presets';
 import { colors } from '../colors';
 
@@ -32,11 +32,186 @@ function useWheelInput(
 
 type SessionPhase = 'config' | 'running' | 'review';
 
-interface Props {
-  onConfigChange: (config: AlgorithmConfig) => void;
+// ---------------------------------------------------------------------------
+// InitialSettings — reusable config inputs (preset, population, crossover, mutation)
+// ---------------------------------------------------------------------------
+
+export interface InitialSettingsProps {
   sessionPhase: SessionPhase;
   presets: Preset[];
   algorithmConfig: AlgorithmConfig | null;
+  populationSize: number;
+  setPopulationSize: (v: number) => void;
+  crossoverMin: number;
+  setCrossoverMin: (v: number) => void;
+  crossoverMax: number;
+  setCrossoverMax: (v: number) => void;
+  mutationRate: number;
+  setMutationRate: (v: number) => void;
+  selectedPresetId: string;
+  setSelectedPresetId: (id: string) => void;
+  selectPreset: (id: string) => void;
+}
+
+export const InitialSettings: React.FC<InitialSettingsProps> = ({
+  sessionPhase,
+  presets,
+  algorithmConfig,
+  populationSize,
+  setPopulationSize,
+  crossoverMin,
+  setCrossoverMin,
+  crossoverMax,
+  setCrossoverMax,
+  mutationRate,
+  setMutationRate,
+  selectedPresetId,
+  setSelectedPresetId,
+  selectPreset,
+}) => {
+  const isConfig = sessionPhase === 'config';
+  const clearPreset = useCallback(() => setSelectedPresetId(''), [setSelectedPresetId]);
+
+  const popRef = useWheelInput(populationSize, setPopulationSize, { min: 50, max: 50000, step: 50, enabled: isConfig, clearPreset });
+  const crossMinRef = useWheelInput(crossoverMin, setCrossoverMin, { min: 1, max: 6, enabled: isConfig, clearPreset });
+  const crossMaxRef = useWheelInput(crossoverMax, setCrossoverMax, { min: 1, max: 6, enabled: isConfig, clearPreset });
+  const mutationDisplay = isConfig ? Math.round(mutationRate * 100) : Math.round((algorithmConfig?.mutationRate ?? 0) * 100);
+  const setMutationFromPercent = useCallback((v: number) => setMutationRate(v / 100), [setMutationRate]);
+  const mutRef = useWheelInput(mutationDisplay, setMutationFromPercent, { min: 0, max: 100, enabled: isConfig, clearPreset });
+
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [dropdownOpen]);
+
+  const handleSelectPreset = (id: string) => {
+    selectPreset(id);
+    setDropdownOpen(false);
+  };
+
+  // Display values: use lifted state in config, frozen algorithmConfig when running
+  const displayPop = isConfig ? populationSize : algorithmConfig?.populationSize ?? 0;
+  const displayCrossMin = isConfig ? crossoverMin : (algorithmConfig?.crossoverRange[0] ?? 0);
+  const displayCrossMax = isConfig ? crossoverMax : (algorithmConfig?.crossoverRange[1] ?? 0);
+  const displayMut = isConfig ? mutationRate : (algorithmConfig?.mutationRate ?? 0);
+
+  return (
+    <div style={{ ...styles.section, marginBottom: 0 }}>
+      <div style={styles.sectionTitleRow}>
+        <div style={{ ...styles.sectionTitle, borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }} data-help={isConfig ? "Set algorithm parameters before starting a run" : "Algorithm parameters set before the run started"}>
+          Initial Settings
+        </div>
+        <div ref={dropdownRef} style={{ position: 'relative' as const }} data-help="Load a predefined configuration">
+          <button
+            onClick={() => isConfig && setDropdownOpen((o) => !o)}
+            disabled={!isConfig}
+            style={{ ...styles.presetSelect, opacity: isConfig ? 1 : 0.4 }}
+          >
+            {presets.find((p) => p.id === selectedPresetId)?.name ?? 'Custom'} &#x25BE;
+          </button>
+          {dropdownOpen && (
+            <div style={styles.dropdownMenu}>
+              <div
+                style={styles.dropdownItem}
+                data-help="Manually configured parameters"
+                onClick={() => { setSelectedPresetId(''); setDropdownOpen(false); }}
+              >
+                Custom
+              </div>
+              {presets.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    ...styles.dropdownItem,
+                    ...(p.id === selectedPresetId ? styles.dropdownItemActive : {}),
+                  }}
+                  data-help={p.description}
+                  onClick={() => handleSelectPreset(p.id)}
+                >
+                  {p.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Population */}
+      <div style={styles.statRow} data-help="Number of specimens created each generation. Use mousewheel or arrow keys to adjust." data-help-glossary="population">
+        <span style={styles.statLabel}>Population</span>
+        <input
+          ref={popRef}
+          type="number"
+          min={50}
+          max={50000}
+          step={50}
+          value={displayPop}
+          onChange={(e) => { setSelectedPresetId(''); setPopulationSize(Number(e.target.value)); }}
+          disabled={!isConfig}
+          style={{ ...styles.inlineInput, ...(isConfig ? {} : styles.lockedInput) }}
+        />
+      </div>
+
+      {/* Crossover */}
+      <div style={styles.statRow} data-help="Gene position range where chromosomes can be split during breeding. Use mousewheel or arrow keys to adjust." data-help-glossary="crossover">
+        <span style={styles.statLabel}>Crossover</span>
+        <span style={styles.inlineGroup}>
+          [<input
+            ref={crossMinRef}
+            type="number"
+            min={1}
+            max={6}
+            value={displayCrossMin}
+            onChange={(e) => { setSelectedPresetId(''); setCrossoverMin(Number(e.target.value)); }}
+            disabled={!isConfig}
+            style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
+          />, <input
+            ref={crossMaxRef}
+            type="number"
+            min={1}
+            max={6}
+            value={displayCrossMax}
+            onChange={(e) => { setSelectedPresetId(''); setCrossoverMax(Number(e.target.value)); }}
+            disabled={!isConfig}
+            style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
+          />]
+        </span>
+      </div>
+
+      {/* Mutation */}
+      <div style={styles.statRow} data-help="Probability of a random gene change after crossover. Use mousewheel or arrow keys to adjust." data-help-glossary="mutation">
+        <span style={styles.statLabel}>Mutation</span>
+        <span style={styles.inlineGroup}>
+          <input
+            ref={mutRef}
+            type="number"
+            min={0}
+            max={100}
+            value={isConfig ? Math.round(mutationRate * 100) : Math.round(displayMut * 100)}
+            onChange={(e) => { setSelectedPresetId(''); setMutationRate(Number(e.target.value) / 100); }}
+            disabled={!isConfig}
+            style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
+          />%
+        </span>
+      </div>
+
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// ConfigPanel — Session Data panel (Initial Settings + Status + Totals)
+// ---------------------------------------------------------------------------
+
+interface Props {
   stepStatistics: StepStatistics | null;
   cumulativeStats: CumulativeStatistics | null;
   generation: number;
@@ -59,10 +234,6 @@ const StatRow: React.FC<{ label: string; value: string; help?: string; onClick?:
 );
 
 export const ConfigPanel: React.FC<Props> = ({
-  onConfigChange,
-  sessionPhase,
-  presets,
-  algorithmConfig,
   stepStatistics,
   cumulativeStats,
   generation,
@@ -72,166 +243,9 @@ export const ConfigPanel: React.FC<Props> = ({
   statusMessage,
   onStatusClick,
 }) => {
-  const isConfig = sessionPhase === 'config';
-  const [populationSize, setPopulationSize] = useState(100);
-  const [crossoverMin, setCrossoverMin] = useState(DEFAULT_CONFIG.crossoverRange[0]);
-  const [crossoverMax, setCrossoverMax] = useState(DEFAULT_CONFIG.crossoverRange[1]);
-  const [mutationRate, setMutationRate] = useState(DEFAULT_CONFIG.mutationRate);
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('quick-demo');
-
-  const clearPreset = useCallback(() => setSelectedPresetId(''), []);
-
-  const popRef = useWheelInput(populationSize, setPopulationSize, { min: 50, max: 50000, step: 50, enabled: isConfig, clearPreset });
-  const crossMinRef = useWheelInput(crossoverMin, setCrossoverMin, { min: 1, max: 6, enabled: isConfig, clearPreset });
-  const crossMaxRef = useWheelInput(crossoverMax, setCrossoverMax, { min: 1, max: 6, enabled: isConfig, clearPreset });
-  const mutationDisplay = isConfig ? Math.round(mutationRate * 100) : Math.round((algorithmConfig?.mutationRate ?? 0) * 100);
-  const setMutationFromPercent = useCallback((v: number) => setMutationRate(v / 100), []);
-  const mutRef = useWheelInput(mutationDisplay, setMutationFromPercent, { min: 0, max: 100, enabled: isConfig, clearPreset });
-
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const selectPreset = (id: string) => {
-    setSelectedPresetId(id);
-    setDropdownOpen(false);
-    const preset = presets.find((p) => p.id === id);
-    if (preset) {
-      setPopulationSize(preset.config.populationSize);
-      setCrossoverMin(preset.config.crossoverRange[0]);
-      setCrossoverMax(preset.config.crossoverRange[1]);
-      setMutationRate(preset.config.mutationRate);
-    }
-  };
-
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [dropdownOpen]);
-
-  useEffect(() => {
-    onConfigChange({
-      populationSize,
-      crossoverRange: [crossoverMin, crossoverMax],
-      mutationRate,
-    });
-  }, [populationSize, crossoverMin, crossoverMax, mutationRate, onConfigChange]);
-
-  // Display values: use local state in config, frozen algorithmConfig when running
-  const displayPop = isConfig ? populationSize : algorithmConfig?.populationSize ?? 0;
-  const displayCrossMin = isConfig ? crossoverMin : (algorithmConfig?.crossoverRange[0] ?? 0);
-  const displayCrossMax = isConfig ? crossoverMax : (algorithmConfig?.crossoverRange[1] ?? 0);
-  const displayMut = isConfig ? mutationRate : (algorithmConfig?.mutationRate ?? 0);
-
   return (
     <div style={styles.panel}>
       <h3 style={styles.title} data-help="Detailed statistics for the current algorithm run">Session Data</h3>
-
-      {/* Initial Settings */}
-      <div style={styles.section}>
-        <div style={styles.sectionTitleRow}>
-          <div style={{ ...styles.sectionTitle, borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }} data-help={isConfig ? "Set algorithm parameters before starting a run" : "Algorithm parameters set before the run started"}>
-            Initial Settings
-          </div>
-          <div ref={dropdownRef} style={{ position: 'relative' as const }} data-help="Load a predefined configuration">
-            <button
-              onClick={() => isConfig && setDropdownOpen((o) => !o)}
-              disabled={!isConfig}
-              style={{ ...styles.presetSelect, opacity: isConfig ? 1 : 0.4 }}
-            >
-              {presets.find((p) => p.id === selectedPresetId)?.name ?? 'Custom'} &#x25BE;
-            </button>
-            {dropdownOpen && (
-              <div style={styles.dropdownMenu}>
-                <div
-                  style={styles.dropdownItem}
-                  data-help="Manually configured parameters"
-                  onClick={() => { setSelectedPresetId(''); setDropdownOpen(false); }}
-                >
-                  Custom
-                </div>
-                {presets.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      ...styles.dropdownItem,
-                      ...(p.id === selectedPresetId ? styles.dropdownItemActive : {}),
-                    }}
-                    data-help={p.description}
-                    onClick={() => selectPreset(p.id)}
-                  >
-                    {p.name}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        {/* Population */}
-        <div style={styles.statRow} data-help="Number of individuals created each generation. Use mousewheel or arrow keys to adjust." data-help-glossary="population">
-          <span style={styles.statLabel}>Population</span>
-          <input
-            ref={popRef}
-            type="number"
-            min={50}
-            max={50000}
-            step={50}
-            value={displayPop}
-            onChange={(e) => { setSelectedPresetId(''); setPopulationSize(Number(e.target.value)); }}
-            disabled={!isConfig}
-            style={{ ...styles.inlineInput, ...(isConfig ? {} : styles.lockedInput) }}
-          />
-        </div>
-
-        {/* Crossover */}
-        <div style={styles.statRow} data-help="Gene position range where chromosomes can be split during breeding. Use mousewheel or arrow keys to adjust." data-help-glossary="crossover">
-          <span style={styles.statLabel}>Crossover</span>
-          <span style={styles.inlineGroup}>
-            [<input
-              ref={crossMinRef}
-              type="number"
-              min={1}
-              max={6}
-              value={displayCrossMin}
-              onChange={(e) => { setSelectedPresetId(''); setCrossoverMin(Number(e.target.value)); }}
-              disabled={!isConfig}
-              style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
-            />, <input
-              ref={crossMaxRef}
-              type="number"
-              min={1}
-              max={6}
-              value={displayCrossMax}
-              onChange={(e) => { setSelectedPresetId(''); setCrossoverMax(Number(e.target.value)); }}
-              disabled={!isConfig}
-              style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
-            />]
-          </span>
-        </div>
-
-        {/* Mutation */}
-        <div style={styles.statRow} data-help="Probability of a random gene change after crossover. Use mousewheel or arrow keys to adjust." data-help-glossary="mutation">
-          <span style={styles.statLabel}>Mutation</span>
-          <span style={styles.inlineGroup}>
-            <input
-              ref={mutRef}
-              type="number"
-              min={0}
-              max={100}
-              value={isConfig ? Math.round(mutationRate * 100) : Math.round(displayMut * 100)}
-              onChange={(e) => { setSelectedPresetId(''); setMutationRate(Number(e.target.value) / 100); }}
-              disabled={!isConfig}
-              style={{ ...styles.inlineInputSmall, ...(isConfig ? {} : styles.lockedInput) }}
-            />%
-          </span>
-        </div>
-
-      </div>
 
       {/* Status */}
       <div style={styles.section}>
@@ -242,7 +256,7 @@ export const ConfigPanel: React.FC<Props> = ({
           value={`${bestFitness}/${MAX_FITNESS}`}
           help="Highest fitness score in the current population — 28/28 means a valid solution"
         />
-        <StatRow label="Avg Fitness" value={avgFitness.toFixed(1)} help="Mean fitness across all individuals in the current generation" />
+        <StatRow label="Avg Fitness" value={avgFitness.toFixed(1)} help="Mean fitness across all specimens in the current generation" />
         <StatRow
           label="State"
           value={solved ? 'SOLVED' : generation === 0 ? 'Ready' : 'Running'}
@@ -259,17 +273,17 @@ export const ConfigPanel: React.FC<Props> = ({
         <StatRow
           label="Eligible Parents"
           value={stepStatistics?.eligibleParentsCount.toLocaleString() ?? '--'}
-          help="Individuals with fitness above zero that can be selected for breeding"
+          help="Specimens with fitness above zero that can be selected for breeding"
         />
         <StatRow
           label="Avg Fitness (Eligible)"
           value={stepStatistics?.avgFitnessEligibleParents.toFixed(2) ?? '--'}
-          help="Mean fitness of all individuals eligible for selection"
+          help="Mean fitness of all specimens eligible for selection"
         />
         <StatRow
           label="Actual Parents"
           value={stepStatistics?.actualParentsCount.toLocaleString() ?? '--'}
-          help="Individuals actually chosen by roulette wheel selection to breed"
+          help="Specimens actually chosen by roulette wheel selection to breed"
         />
         <StatRow
           label="Avg Fitness (Actual)"
@@ -294,7 +308,7 @@ export const ConfigPanel: React.FC<Props> = ({
       </div>
 
       {/* Cumulative Totals */}
-      <div style={styles.section}>
+      <div style={{ ...styles.section, marginBottom: 0 }}>
         <div style={styles.sectionTitle} data-help="Running totals across all generations">Cumulative Totals</div>
         <StatRow
           label="Total Eligible Parents"
@@ -337,7 +351,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 16,
     border: `1px solid ${colors.border.subtle}`,
-    flex: 1,
     minWidth: 180,
     minHeight: 0,
     overflowY: 'auto' as const,

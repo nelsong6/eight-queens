@@ -123,7 +123,7 @@ export class AlgorithmRunner {
       generationNumber: result.generationNumber,
       bestFitness: result.bestFitness,
       avgFitness: result.avgFitness,
-      bestIndividual: [...result.bestIndividual.solution],
+      bestSpecimen: [...result.bestSpecimen.solution],
       mutationCount: result.mutationCount,
     };
   }

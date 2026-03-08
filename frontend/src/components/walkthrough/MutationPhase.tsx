@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GenerationResult } from '../../engine/types';
-import { formatId } from '../../engine/individual';
+import { formatId } from '../../engine/specimen';
 
 interface Props {
   result: GenerationResult;

@@ -16,8 +16,8 @@ No backend or API.
 - Selection: fitness-proportionate roulette wheel (10K-slot array)
 - Crossover: single-point at random position within configurable range [min, max]
 - Mutation: per-child probability, replaces one random gene with random value
-- Termination: first individual with fitness == 28
-- Individual age lifecycle: 0 (chromosome) → 1 (child) → 2 (adult) → 3 (elder, then removed)
+- Termination: first specimen with fitness == 28
+- Specimen age lifecycle: 0 (chromosome) → 1 (child) → 2 (adult) → 3 (elder, then removed)
 
 ## Engine Layer (frontend/src/engine/)
 
@@ -32,10 +32,10 @@ Hook: `useBufferedAlgorithm` wires everything to React state. Manages undo/redo 
 
 Key engine files:
 
-- `types.ts` — all interfaces: `Individual` (with `age: Age`), `Age` (0–3 lifecycle type), `AlgorithmConfig`, `GenerationResult`, `GenerationBreedingData`, `StepStatistics`, `CumulativeStatistics`, `GenerationSummary`, `MutationRecord`, plus time coordinate types: `OpType`, `OpCategory`, `OpDefinition`, `TimeCoordinate`, `PoolName`, `PoolOrigin`
+- `types.ts` — all interfaces: `Specimen` (with `age: Age`), `Age` (0–3 lifecycle type), `AlgorithmConfig`, `GenerationResult`, `GenerationBreedingData`, `StepStatistics`, `CumulativeStatistics`, `GenerationSummary`, `MutationRecord`, plus time coordinate types: `OpType`, `OpCategory`, `OpDefinition`, `TimeCoordinate`, `PoolName`, `PoolOrigin`
 - `time-coordinate.ts` — `GENERATION_OPS` array (7 atomic operations), utility functions: `formatCoordinate`, `getOp`, `poolDisplayName`, `getPoolsAtCoordinate`, `categoryToOrigin`, `OPS_PER_GENERATION`
 - `fitness.ts` — `assessFitness(solution[])`: counts attacking pairs, returns 28 - attacks
-- `individual.ts` — `createRandomIndividual`, `createSeededIndividual` (deterministic from seed+id), `mutate`, `cloneIndividual`
+- `specimen.ts` — `createRandomSpecimen`, `createSeededSpecimen` (deterministic from seed+id), `mutate`, `cloneSpecimen`
 
 ## UI Layout (App.tsx)
 
@@ -51,7 +51,7 @@ Key engine files:
 **Column 1: Board + Specimen**
 
 - `Chessboard` — renders queens, shows attack lines when started
-- `SpecimenPanel` — click any individual to inspect: id, fitness, born gen, role, mutation, parentage, crossover point, sibling, matings; displays `PoolOrigin` coordinate showing exactly where in the pipeline the individual was observed
+- `SpecimenPanel` — click any specimen to inspect: id, fitness, born gen, role, mutation, parentage, crossover point, sibling, matings; displays `PoolOrigin` coordinate showing exactly where in the pipeline the specimen was observed
 
 **Column 2: Config (flex 0.7)**
 
@@ -80,13 +80,13 @@ config → running → review
 
 ## Time Coordinate System
 
-Every individual's position in the GA pipeline is tracked with a 3-element coordinate `x.y.t`:
+Every specimen's position in the GA pipeline is tracked with a 3-element coordinate `x.y.t`:
 
 - `x` = generation number
 - `y` = atomic operation index (0–6)
 - `t` = boundary/phase: `0` (before), `t` (transform process, not a point in time), `1` (after) — internal array index is 0, 1, 2
 
-7 operations × 3 phases = 21 screens per generation in micro mode. The transform screen (t) visualizes what the operation does — showing input/output pool flow, operation type badge, individual count delta, and a detailed description of the mechanism.
+7 operations × 3 phases = 21 screens per generation in micro mode. The transform screen (t) visualizes what the operation does — showing input/output pool flow, operation type badge, specimen count delta, and a detailed description of the mechanism.
 
 Gen 0 is the synthetic seed — micro mode starts at `0.6.1` (the seed's connecting point, showing the completed initial population). The first real algorithm step begins at `1.0.0`.
 
@@ -94,7 +94,7 @@ Gen 0 is the synthetic seed — micro mode starts at `0.6.1` (the seed's connect
 
 | y   | Name                    | Type      | Category   |
 | --- | ----------------------- | --------- | ---------- |
-| 0   | Age individuals         | transform | Aging      |
+| 0   | Age specimens           | transform | Aging      |
 | 1   | Remove elders           | remove    | Pruning    |
 | 2   | Select breeding pairs   | transform | Selection  |
 | 3   | Mark pairs as mated     | transform | Crossover  |
@@ -107,9 +107,9 @@ Unselected adults (those not chosen for breeding) persist alongside mated parent
 ### Key Types
 
 - `TimeCoordinate` — `{ generation, operation, boundary }` — precise pipeline position
-- `PoolOrigin` — `{ coordinate, pool, qualifier? }` — where an individual was observed
+- `PoolOrigin` — `{ coordinate, pool, qualifier? }` — where a specimen was observed
 - `PoolName` — which named pool: `oldParents`, `previousChildren`, `eligibleAdults`, `retiredParents`, `selectedPairs`, `unselected`, `matedParents`, `chromosomes`, `finalChildren`
-- `onSelectIndividual(individual, origin: PoolOrigin)` — all individual selection passes structured origin, not free-form strings
+- `onSelectSpecimen(specimen, origin: PoolOrigin)` — all specimen selection passes structured origin, not free-form strings
 
 ### Synthetic Seed Parents (Gen 0)
 
@@ -121,11 +121,11 @@ Unselected adults (those not chosen for breeding) persist alongside mated parent
 
 `SubPhaseScreen` renders three screen types per operation:
 
-- **Before (t=0)**: Shows input pools with individual lists
-- **Transform (t=1)**: Visualizes the operation — input→output pool flow diagram, operation type badge, individual count delta, and detailed mechanism description. Uses `getTransformDescription()` and `OP_POOL_TRANSITIONS` data.
-- **After (t=2)**: Shows output pools with individual lists
+- **Before (t=0)**: Shows input pools with specimen lists
+- **Transform (t=1)**: Visualizes the operation — input→output pool flow diagram, operation type badge, specimen count delta, and detailed mechanism description. Uses `getTransformDescription()` and `OP_POOL_TRANSITIONS` data.
+- **After (t=2)**: Shows output pools with specimen lists
 
-Uses `getPoolsAtCoordinate()` to determine which pools to display, and `resolvePool()` to map pool names to actual individuals from `result` and `previousResult`.
+Uses `getPoolsAtCoordinate()` to determine which pools to display, and `resolvePool()` to map pool names to actual specimens from `result` and `previousResult`.
 
 `BreadcrumbTrail` shows `Category — Operation name (Before/Transform/After)` with step counter. `Controls` shows `x/21` step indicator in micro mode.
 

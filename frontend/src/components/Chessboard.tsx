@@ -1,10 +1,10 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import type { Individual } from '../engine/types';
+import type { Specimen } from '../engine/types';
 import { BOARD_SIZE, MAX_FITNESS } from '../engine/types';
 import { colors } from '../colors';
 
 interface Props {
-  individual: Individual | null;
+  specimen: Specimen | null;
   showAttacks?: boolean;
   /** Algorithm interval in ms — drives animation tier logic. Undefined = manual step. */
   speed?: number;
@@ -47,12 +47,12 @@ const THROTTLE_INTERVAL = 150;   // ms between visual updates in throttled tier
 // Component
 // ---------------------------------------------------------------------------
 
-const CELL_SIZE = 42;
+const CELL_SIZE = 36;
 const BOARD_PX = CELL_SIZE * BOARD_SIZE;
 const PAD = CELL_SIZE * 0.08;
 const SPRITE_SIZE = CELL_SIZE - PAD * 2;
 
-export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, speed, zoomed = false }) => {
+export const Chessboard: React.FC<Props> = ({ specimen, showAttacks = true, speed, zoomed = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [spriteLoaded, setSpriteLoaded] = useState(!!queenImage);
@@ -76,8 +76,8 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
     return () => observer.disconnect();
   }, [zoomed]);
 
-  // Throttle state: the individual actually being rendered
-  const [displayedIndividual, setDisplayedIndividual] = useState(individual);
+  // Throttle state: the specimen actually being rendered
+  const [displayedSpecimen, setDisplayedSpecimen] = useState(specimen);
   const lastRenderTimeRef = useRef(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -98,11 +98,11 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
 
   const isThrottled = speed !== undefined && speed < TIER_THROTTLE_MAX;
 
-  // Throttle / pass-through logic for incoming individual
+  // Throttle / pass-through logic for incoming specimen
   useEffect(() => {
     if (!isThrottled) {
-      // Tiers 1 & 2: render every individual immediately
-      setDisplayedIndividual(individual);
+      // Tiers 1 & 2: render every specimen immediately
+      setDisplayedSpecimen(specimen);
       return;
     }
 
@@ -113,13 +113,13 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
     if (elapsed >= THROTTLE_INTERVAL) {
       // Enough time passed — render now
       lastRenderTimeRef.current = now;
-      setDisplayedIndividual(individual);
+      setDisplayedSpecimen(specimen);
     } else {
       // Too soon — schedule a deferred render with the latest value
       if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
       pendingTimerRef.current = setTimeout(() => {
         lastRenderTimeRef.current = Date.now();
-        setDisplayedIndividual(individual);
+        setDisplayedSpecimen(specimen);
         pendingTimerRef.current = null;
       }, THROTTLE_INTERVAL - elapsed);
     }
@@ -130,7 +130,7 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
         pendingTimerRef.current = null;
       }
     };
-  }, [individual, isThrottled]);
+  }, [specimen, isThrottled]);
 
   // Draw board squares + attack highlights on canvas (no queens)
   useEffect(() => {
@@ -150,13 +150,13 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
       }
     }
 
-    if (!displayedIndividual || !showAttacks) return;
+    if (!displayedSpecimen || !showAttacks) return;
 
     // Highlight attacking pairs in red
     for (let i = 0; i < BOARD_SIZE; i++) {
       for (let j = i + 1; j < BOARD_SIZE; j++) {
-        const ri = displayedIndividual.solution[i]!;
-        const rj = displayedIndividual.solution[j]!;
+        const ri = displayedSpecimen.solution[i]!;
+        const rj = displayedSpecimen.solution[j]!;
         const attacking =
           ri === rj || Math.abs(i - j) === Math.abs(ri - rj);
         if (attacking) {
@@ -166,9 +166,9 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
         }
       }
     }
-  }, [displayedIndividual, showAttacks]);
+  }, [displayedSpecimen, showAttacks]);
 
-  const isSolved = displayedIndividual?.fitness === MAX_FITNESS;
+  const isSolved = displayedSpecimen?.fitness === MAX_FITNESS;
 
   return (
     <div ref={wrapperRef} style={{ ...styles.wrapper, ...(zoomed ? { width: '100%', height: '100%', justifyContent: 'center' } : {}) }} data-help="8×8 board showing queen placements — red squares indicate attacking pairs" data-help-glossary="attacking-queens">
@@ -188,7 +188,7 @@ export const Chessboard: React.FC<Props> = ({ individual, showAttacks = true, sp
           style={styles.canvas}
         />
         {/* Queen DOM overlay */}
-        {spriteLoaded && displayedIndividual && displayedIndividual.solution.map((row, col) => (
+        {spriteLoaded && displayedSpecimen && displayedSpecimen.solution.map((row, col) => (
           <img
             key={col}
             src="/sprites/queen.png"

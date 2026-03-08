@@ -1,221 +1,270 @@
 /**
- * OperationPanel — shows all three phases of one pipeline operation simultaneously.
- * Before | Transform | After are displayed side by side; the active boundary is
- * highlighted and the others are dimmed. Clicking a dimmed section activates it.
+ * OperationPanel — shows Before and After for one pipeline operation simultaneously.
+ * A static transform description box sits between the two data panels.
+ * The active boundary (0=before, 1=after) is highlighted; the other is dimmed.
+ *
+ * Sorting is shared: both sides display rows in the same order.
+ * Specimens missing from one side (removed/added) appear as empty placeholder rows.
  */
-import React, { useMemo, useState } from 'react';
-import type { Individual, GenerationResult, PoolOrigin, PoolName } from '../engine/types';
-import { getOp, poolDisplayName, resolvePoolFromPipeline, getPoolsAtCoordinate } from '../engine/time-coordinate';
-import { type SortingState, type ColumnFiltersState } from '@tanstack/react-table';
-import { IndividualList, TransformView, CATEGORY_COLORS } from './walkthrough/IndividualList';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
+import type { Specimen, GenerationResult, PoolOrigin, PoolName } from '../engine/types';
+import { getOp, poolDisplayName, resolvePoolFromPipeline, getPoolsAtCoordinate, getTransformDescription } from '../engine/time-coordinate';
+import { type SortingState } from '@tanstack/react-table';
+import { CATEGORY_COLORS } from './walkthrough/SpecimenList';
+import { SyncedSpecimenList, type SyncedListHandle } from './walkthrough/SyncedSpecimenList';
 import { colors } from '../colors';
 
 type PoolFilter = PoolName | 'all';
 
 interface Props {
   operation: number;          // 0–6
-  boundary: 0 | 1 | 2;       // currently highlighted phase
+  boundary: 0 | 1;           // 0=before highlighted, 1=after highlighted
   result: GenerationResult;
-  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
+  onSelectSpecimen: (specimen: Specimen, origin: PoolOrigin) => void;
   /** For op 4 crossover pair browser */
   browsePairIndex: number;
   onPairChange: (index: number) => void;
-  /** Called when user clicks an inactive phase to focus it */
-  onBoundaryChange: (boundary: 0 | 1 | 2) => void;
+  onBoundaryClick?: (boundary: 0 | 1) => void;
+}
+
+interface SyncedRow {
+  key: number;
+  before: Specimen | null;
+  after: Specimen | null;
 }
 
 // ---------------------------------------------------------------------------
-// BoundarySection — renders one phase (Before or After) with pool filter + list
+// Sort comparator — mirrors the column sorting logic from react-table
 // ---------------------------------------------------------------------------
 
-const BoundarySection: React.FC<{
-  operation: number;
-  boundary: 0 | 2;
-  result: GenerationResult;
-  isActive: boolean;
-  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
-  browsePairIndex: number;
-  onPairChange: (index: number) => void;
-  onActivate: () => void;
-}> = ({ operation, boundary, result, isActive, onSelectIndividual, browsePairIndex, onPairChange, onActivate }) => {
-  const [poolFilter, setPoolFilter] = useState<PoolFilter>('all');
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'fitness', desc: true }]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-
-  const op = getOp(operation);
-  const opColor = CATEGORY_COLORS[op.category] ?? colors.accent.purple;
-
-  const coordinate = useMemo(() => ({ generation: result.generationNumber, operation, boundary }), [result.generationNumber, operation, boundary]);
-
-  const pools = useMemo(() => getPoolsAtCoordinate({ generation: result.generationNumber, operation, boundary }), [result.generationNumber, operation, boundary]);
-
-  // Reset filter if pools change (e.g. operation switched)
-  const poolKey = pools.join(',');
-  const [prevPoolKey, setPrevPoolKey] = useState(poolKey);
-  if (poolKey !== prevPoolKey) {
-    setPrevPoolKey(poolKey);
-    setPoolFilter(pools.length > 1 ? 'all' : (pools[0] ?? 'all'));
-    setColumnFilters([]);
+function getSortValue(ind: Specimen | null, sortId: string): number | string {
+  if (!ind) return sortId === 'id' ? Infinity : -Infinity;
+  switch (sortId) {
+    case 'id': return ind.id;
+    case 'gene0': return ind.solution[0] ?? 0;
+    case 'fitness': return ind.fitness;
+    case 'age': return ind.age;
+    default: return 0;
   }
+}
 
-  const poolData = useMemo(() => pools.map(poolName => ({
-    name: poolName,
-    individuals: resolvePoolFromPipeline(poolName, result.pipeline, operation, boundary),
-  })), [pools, result.pipeline, operation, boundary]);
-
-  const allIndividuals = useMemo(() => {
-    const seen = new Set<number>();
-    const all: Individual[] = [];
-    for (const { individuals } of poolData) {
-      for (const ind of individuals) {
-        if (!seen.has(ind.id)) { seen.add(ind.id); all.push(ind); }
-      }
-    }
-    return all;
-  }, [poolData]);
-
-  const displayedIndividuals = useMemo(() => {
-    if (poolFilter === 'all') return allIndividuals;
-    const pool = poolData.find(p => p.name === poolFilter);
-    return pool ? pool.individuals : allIndividuals;
-  }, [poolFilter, allIndividuals, poolData]);
-
-  const handleClick = (ind: Individual) => {
-    let pool: PoolName = pools[0] ?? 'eligibleAdults';
-    if (poolFilter !== 'all') pool = poolFilter;
-    onSelectIndividual(ind, { coordinate, pool });
+function buildComparator(sorting: SortingState): (a: SyncedRow, b: SyncedRow) => number {
+  if (sorting.length === 0) return () => 0;
+  const { id: sortId, desc } = sorting[0]!;
+  return (a, b) => {
+    // Use whichever side has the specimen (prefer before for sort value)
+    const aInd = a.before ?? a.after;
+    const bInd = b.before ?? b.after;
+    const aVal = getSortValue(aInd, sortId);
+    const bVal = getSortValue(bInd, sortId);
+    let cmp = 0;
+    if (aVal < bVal) cmp = -1;
+    else if (aVal > bVal) cmp = 1;
+    return desc ? -cmp : cmp;
   };
-
-  const isCrossoverAdd = operation === 4 && boundary === 2;
-  const totalPairs = result.breedingData.aParents.length;
-
-  const label = boundary === 0 ? 'Before' : 'After';
-
-  return (
-    <div
-      style={{
-        ...sectionStyles.wrapper,
-        opacity: isActive ? 1 : 0.5,
-        border: isActive ? `2px solid ${opColor}55` : `1px solid ${colors.border.subtle}`,
-        backgroundColor: isActive ? colors.bg.surface : colors.bg.raised,
-        cursor: isActive ? 'default' : 'pointer',
-        boxShadow: isActive ? `0 0 12px ${opColor}22` : 'none',
-      }}
-      onClick={!isActive ? onActivate : undefined}
-    >
-      {/* Section header */}
-      <div style={sectionStyles.header}>
-        <span style={{ ...sectionStyles.boundaryLabel, color: isActive ? opColor : colors.text.disabled }}>
-          {label}
-        </span>
-        <span style={sectionStyles.poolCount}>{allIndividuals.length}</span>
-      </div>
-
-      {/* Pool filter */}
-      {pools.length > 1 && (
-        <div style={sectionStyles.filterRow}>
-          <select
-            data-help="Filter by pool"
-            value={poolFilter}
-            onChange={e => { setPoolFilter(e.target.value as PoolFilter); setColumnFilters([]); }}
-            style={sectionStyles.filterSelect}
-            onClick={e => e.stopPropagation()}
-          >
-            <option value="all">All ({allIndividuals.length})</option>
-            {poolData.map(({ name, individuals }) => (
-              <option key={name} value={name}>
-                {poolDisplayName({ coordinate, pool: name })} ({individuals.length})
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Crossover pair browser (op 4 after) */}
-      {isCrossoverAdd && totalPairs > 0 && isActive && (
-        <div style={sectionStyles.pairNav} onClick={e => e.stopPropagation()}>
-          <button onClick={() => onPairChange(Math.max(0, browsePairIndex - 1))} disabled={browsePairIndex === 0} style={{ ...sectionStyles.navBtn, opacity: browsePairIndex === 0 ? 0.3 : 1 }}>Prev</button>
-          <span style={sectionStyles.pairLabel}>Pair {browsePairIndex + 1}/{totalPairs.toLocaleString()}</span>
-          <button onClick={() => onPairChange(Math.min(totalPairs - 1, browsePairIndex + 1))} disabled={browsePairIndex >= totalPairs - 1} style={{ ...sectionStyles.navBtn, opacity: browsePairIndex >= totalPairs - 1 ? 0.3 : 1 }}>Next</button>
-        </div>
-      )}
-
-      {/* Individual list — pointer-events disabled when inactive so clicks fall through to onActivate */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', pointerEvents: isActive ? 'auto' : 'none' }}>
-        {displayedIndividuals.length > 0 ? (
-          <IndividualList
-            individuals={displayedIndividuals}
-            onClickItem={handleClick}
-            sorting={sorting}
-            onSortingChange={setSorting}
-            columnFilters={columnFilters}
-            onColumnFiltersChange={setColumnFilters}
-            flex
-          />
-        ) : (
-          <div style={sectionStyles.emptyPool}>
-            {pools.length === 0 ? 'No data at this step' : 'Empty'}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
+}
 
 // ---------------------------------------------------------------------------
-// TransformSection — renders the operation's mechanism diagram (boundary 1)
+// Dedup helper
 // ---------------------------------------------------------------------------
 
-const TransformSection: React.FC<{
+function dedup(poolData: { name: PoolName; specimens: Specimen[] }[]): Specimen[] {
+  const seen = new Set<number>();
+  const all: Specimen[] = [];
+  for (const { specimens } of poolData) {
+    for (const ind of specimens) {
+      if (!seen.has(ind.id)) { seen.add(ind.id); all.push(ind); }
+    }
+  }
+  return all;
+}
+
+// ---------------------------------------------------------------------------
+// TransformBox — static center panel describing the operation
+// ---------------------------------------------------------------------------
+
+const TransformBox: React.FC<{
   operation: number;
-  result: GenerationResult;
-  isActive: boolean;
-  onActivate: () => void;
-}> = ({ operation, result, isActive, onActivate }) => {
+}> = ({ operation }) => {
   const op = getOp(operation);
   const opColor = CATEGORY_COLORS[op.category] ?? colors.accent.purple;
-  const coordinate = { generation: result.generationNumber, operation, boundary: 1 as const };
+  const desc = getTransformDescription(operation);
+
+  const typeBg = op.type === 'remove' ? '#4a1a1a' : op.type === 'add' ? '#1a4a1a' : '#1a1a4a';
 
   return (
-    <div
-      style={{
-        ...sectionStyles.wrapper,
-        opacity: isActive ? 1 : 0.5,
-        border: isActive ? `2px solid ${opColor}55` : `1px solid ${colors.border.subtle}`,
-        backgroundColor: isActive ? colors.bg.surface : colors.bg.raised,
-        cursor: isActive ? 'default' : 'pointer',
-        boxShadow: isActive ? `0 0 12px ${opColor}22` : 'none',
-      }}
-      onClick={!isActive ? onActivate : undefined}
-    >
-      <div style={sectionStyles.header}>
-        <span style={{ ...sectionStyles.boundaryLabel, color: isActive ? opColor : colors.text.disabled }}>
-          Transform
-        </span>
+    <div style={transformStyles.wrapper}>
+      <div style={{ ...transformStyles.typeBadge, backgroundColor: typeBg }}>
+        {op.type}
       </div>
-      <TransformView coordinate={coordinate} result={result} />
+      <div style={{ ...transformStyles.arrow, color: opColor }}>→</div>
+      <div style={{ ...transformStyles.title, color: opColor }}>{desc.title}</div>
+      <div style={transformStyles.description}>{desc.description}</div>
+      <pre style={transformStyles.pseudoCode}>{desc.pseudoCode.join('\n')}</pre>
     </div>
   );
 };
 
 // ---------------------------------------------------------------------------
-// OperationPanel — composes the three sections
+// OperationPanel — composes Before | Transform | After with synced rows
 // ---------------------------------------------------------------------------
 
 export const OperationPanel: React.FC<Props> = ({
   operation,
   boundary,
   result,
-  onSelectIndividual,
+  onSelectSpecimen,
   browsePairIndex,
   onPairChange,
-  onBoundaryChange,
+  onBoundaryClick,
 }) => {
   const op = getOp(operation);
   const opColor = CATEGORY_COLORS[op.category] ?? colors.accent.purple;
 
+  // Shared state (lifted from BoundarySection)
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'fitness', desc: true }]);
+  const [poolFilter, setPoolFilter] = useState<PoolFilter>('all');
+
+  // Pool data for both sides
+  const beforePools = useMemo(() => getPoolsAtCoordinate({ generation: result.generationNumber, operation, boundary: 0 }), [result.generationNumber, operation]);
+  const afterPools = useMemo(() => getPoolsAtCoordinate({ generation: result.generationNumber, operation, boundary: 1 }), [result.generationNumber, operation]);
+
+  const beforePoolData = useMemo(() => beforePools.map(poolName => ({
+    name: poolName,
+    specimens: resolvePoolFromPipeline(poolName, result.pipeline, operation, 0),
+  })), [beforePools, result.pipeline, operation]);
+
+  const afterPoolData = useMemo(() => afterPools.map(poolName => ({
+    name: poolName,
+    specimens: resolvePoolFromPipeline(poolName, result.pipeline, operation, 1),
+  })), [afterPools, result.pipeline, operation]);
+
+  // Reset pool filter when operation changes
+  const allPoolNames = useMemo(() => {
+    const set = new Set<PoolName>();
+    for (const p of beforePools) set.add(p);
+    for (const p of afterPools) set.add(p);
+    return Array.from(set);
+  }, [beforePools, afterPools]);
+
+  const poolKey = allPoolNames.join(',');
+  const [prevPoolKey, setPrevPoolKey] = useState(poolKey);
+  if (poolKey !== prevPoolKey) {
+    setPrevPoolKey(poolKey);
+    setPoolFilter(allPoolNames.length > 1 ? 'all' : (allPoolNames[0] ?? 'all'));
+  }
+
+  // Filtered specimens per side
+  const beforeAll = useMemo(() => dedup(beforePoolData), [beforePoolData]);
+  const afterAll = useMemo(() => dedup(afterPoolData), [afterPoolData]);
+
+  const beforeFiltered = useMemo(() => {
+    if (poolFilter === 'all') return beforeAll;
+    const pool = beforePoolData.find(p => p.name === poolFilter);
+    return pool ? pool.specimens : [];
+  }, [poolFilter, beforeAll, beforePoolData]);
+
+  const afterFiltered = useMemo(() => {
+    if (poolFilter === 'all') return afterAll;
+    const pool = afterPoolData.find(p => p.name === poolFilter);
+    return pool ? pool.specimens : [];
+  }, [poolFilter, afterAll, afterPoolData]);
+
+  // Build synced rows: union of both sides, sorted together
+  const { beforeItems, afterItems } = useMemo(() => {
+    const beforeMap = new Map<number, Specimen>();
+    for (const ind of beforeFiltered) beforeMap.set(ind.id, ind);
+    const afterMap = new Map<number, Specimen>();
+    for (const ind of afterFiltered) afterMap.set(ind.id, ind);
+
+    // Union of all IDs
+    const allIds = new Set<number>();
+    for (const ind of beforeFiltered) allIds.add(ind.id);
+    for (const ind of afterFiltered) allIds.add(ind.id);
+
+    const rows: SyncedRow[] = [];
+    for (const id of allIds) {
+      rows.push({
+        key: id,
+        before: beforeMap.get(id) ?? null,
+        after: afterMap.get(id) ?? null,
+      });
+    }
+
+    // Sort using shared sorting state
+    const comparator = buildComparator(sorting);
+    rows.sort(comparator);
+
+    return {
+      beforeItems: rows.map(r => r.before),
+      afterItems: rows.map(r => r.after),
+    };
+  }, [beforeFiltered, afterFiltered, sorting]);
+
+  // Scroll sync
+  const beforeListRef = useRef<SyncedListHandle>(null);
+  const afterListRef = useRef<SyncedListHandle>(null);
+  const scrollingRef = useRef(false);
+
+  const handleBeforeScroll = useCallback((scrollTop: number) => {
+    if (scrollingRef.current) return;
+    scrollingRef.current = true;
+    const el = afterListRef.current?.scrollElement;
+    if (el) el.scrollTop = scrollTop;
+    scrollingRef.current = false;
+  }, []);
+
+  const handleAfterScroll = useCallback((scrollTop: number) => {
+    if (scrollingRef.current) return;
+    scrollingRef.current = true;
+    const el = beforeListRef.current?.scrollElement;
+    if (el) el.scrollTop = scrollTop;
+    scrollingRef.current = false;
+  }, []);
+
+  // Coordinates for click handler
+  const beforeCoord = useMemo(() => ({ generation: result.generationNumber, operation, boundary: 0 as const }), [result.generationNumber, operation]);
+  const afterCoord = useMemo(() => ({ generation: result.generationNumber, operation, boundary: 1 as const }), [result.generationNumber, operation]);
+
+  const handleBeforeClick = useCallback((ind: Specimen) => {
+    let pool: PoolName = beforePools[0] ?? 'eligibleAdults';
+    if (poolFilter !== 'all') pool = poolFilter;
+    onSelectSpecimen(ind, { coordinate: beforeCoord, pool });
+  }, [beforePools, poolFilter, onSelectSpecimen, beforeCoord]);
+
+  const handleAfterClick = useCallback((ind: Specimen) => {
+    let pool: PoolName = afterPools[0] ?? 'eligibleAdults';
+    if (poolFilter !== 'all') pool = poolFilter;
+    onSelectSpecimen(ind, { coordinate: afterCoord, pool });
+  }, [afterPools, poolFilter, onSelectSpecimen, afterCoord]);
+
+  // Pool filter dropdown chips
+  const poolChips = useMemo(() => {
+    const chips: { value: PoolFilter; label: string }[] = [];
+    if (allPoolNames.length > 1) {
+      const totalBefore = beforeAll.length;
+      const totalAfter = afterAll.length;
+      chips.push({ value: 'all', label: `All (${totalBefore}→${totalAfter})` });
+    }
+    for (const poolName of allPoolNames) {
+      const bPool = beforePoolData.find(p => p.name === poolName);
+      const aPool = afterPoolData.find(p => p.name === poolName);
+      const bCount = bPool?.specimens.length ?? 0;
+      const aCount = aPool?.specimens.length ?? 0;
+      const coord = { generation: result.generationNumber, operation, boundary: 0 as const };
+      chips.push({ value: poolName, label: `${poolDisplayName({ coordinate: coord, pool: poolName })} (${bCount}→${aCount})` });
+    }
+    return chips;
+  }, [allPoolNames, beforeAll, afterAll, beforePoolData, afterPoolData, result.generationNumber, operation]);
+
+  // Crossover pair browser
+  const isCrossoverAdd = operation === 4;
+  const totalPairs = result.breedingData.aParents.length;
+
   return (
     <div style={styles.container}>
+      <style>{`.vl-row:not(.vl-selected):hover { background-color: ${colors.interactive.hover} !important; }`}</style>
+
       {/* Operation header */}
       <div style={styles.opHeader}>
         <span style={{ ...styles.opName, color: opColor }}>{op.category}</span>
@@ -225,34 +274,96 @@ export const OperationPanel: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* Three sections side by side */}
+      {/* Shared pool filter */}
+      <div style={{ ...sectionStyles.filterRow, visibility: poolChips.length > 1 ? 'visible' : 'hidden' }}>
+        <select
+          data-help="Filter by pool"
+          value={poolFilter}
+          onChange={e => setPoolFilter(e.target.value as PoolFilter)}
+          style={sectionStyles.filterSelect}
+        >
+          {poolChips.map(chip => (
+            <option key={chip.value} value={chip.value}>{chip.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Crossover pair browser — always reserve space */}
+      <div style={{ ...sectionStyles.pairNav, visibility: isCrossoverAdd && totalPairs > 0 ? 'visible' : 'hidden' }}>
+        <button onClick={() => onPairChange(Math.max(0, browsePairIndex - 1))} disabled={browsePairIndex === 0} style={{ ...sectionStyles.navBtn, opacity: browsePairIndex === 0 ? 0.3 : 1 }}>Prev</button>
+        <span style={sectionStyles.pairLabel}>Pair {browsePairIndex + 1}/{totalPairs.toLocaleString()}</span>
+        <button onClick={() => onPairChange(Math.min(totalPairs - 1, browsePairIndex + 1))} disabled={browsePairIndex >= totalPairs - 1} style={{ ...sectionStyles.navBtn, opacity: browsePairIndex >= totalPairs - 1 ? 0.3 : 1 }}>Next</button>
+      </div>
+
+      {/* Three-panel row: Before | Transform | After */}
       <div style={styles.sections}>
-        <BoundarySection
-          operation={operation}
-          boundary={0}
-          result={result}
-          isActive={boundary === 0}
-          onSelectIndividual={onSelectIndividual}
-          browsePairIndex={browsePairIndex}
-          onPairChange={onPairChange}
-          onActivate={() => onBoundaryChange(0)}
-        />
-        <TransformSection
-          operation={operation}
-          result={result}
-          isActive={boundary === 1}
-          onActivate={() => onBoundaryChange(1)}
-        />
-        <BoundarySection
-          operation={operation}
-          boundary={2}
-          result={result}
-          isActive={boundary === 2}
-          onSelectIndividual={onSelectIndividual}
-          browsePairIndex={browsePairIndex}
-          onPairChange={onPairChange}
-          onActivate={() => onBoundaryChange(2)}
-        />
+        {/* BEFORE */}
+        <div
+          onClick={boundary !== 0 ? () => onBoundaryClick?.(0) : undefined}
+          style={{
+            ...sectionStyles.wrapper,
+            border: boundary === 0 ? `2px solid ${opColor}66` : `2px solid transparent`,
+            backgroundColor: boundary === 0 ? colors.bg.surface : colors.bg.raised,
+            opacity: boundary === 0 ? 1 : 0.45,
+            boxShadow: boundary === 0 ? `0 0 10px ${opColor}18` : 'none',
+            cursor: boundary !== 0 ? 'pointer' : 'default',
+          }}
+        >
+          <div style={sectionStyles.header}>
+            <span style={{ ...sectionStyles.boundaryLabel, color: boundary === 0 ? opColor : colors.text.disabled }}>Before</span>
+            <span style={sectionStyles.poolCount}>{beforeFiltered.length}</span>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {beforeItems.length > 0 ? (
+              <SyncedSpecimenList
+                ref={beforeListRef}
+                items={beforeItems}
+                onClickItem={handleBeforeClick}
+                sorting={sorting}
+                onSortingChange={setSorting}
+                onScroll={handleBeforeScroll}
+                flex
+              />
+            ) : (
+              <div style={sectionStyles.emptyPool}>Empty</div>
+            )}
+          </div>
+        </div>
+
+        <TransformBox operation={operation} />
+
+        {/* AFTER */}
+        <div
+          onClick={boundary !== 1 ? () => onBoundaryClick?.(1) : undefined}
+          style={{
+            ...sectionStyles.wrapper,
+            border: boundary === 1 ? `2px solid ${opColor}66` : `2px solid transparent`,
+            backgroundColor: boundary === 1 ? colors.bg.surface : colors.bg.raised,
+            opacity: boundary === 1 ? 1 : 0.45,
+            boxShadow: boundary === 1 ? `0 0 10px ${opColor}18` : 'none',
+            cursor: boundary !== 1 ? 'pointer' : 'default',
+          }}
+        >
+          <div style={sectionStyles.header}>
+            <span style={{ ...sectionStyles.boundaryLabel, color: boundary === 1 ? opColor : colors.text.disabled }}>After</span>
+            <span style={sectionStyles.poolCount}>{afterFiltered.length}</span>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {afterItems.length > 0 ? (
+              <SyncedSpecimenList
+                ref={afterListRef}
+                items={afterItems}
+                onClickItem={handleAfterClick}
+                sorting={sorting}
+                onSortingChange={setSorting}
+                onScroll={handleAfterScroll}
+                flex
+              />
+            ) : (
+              <div style={sectionStyles.emptyPool}>Empty</div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -271,7 +382,7 @@ const sectionStyles: Record<string, React.CSSProperties> = {
     padding: 12,
     minWidth: 0,
     minHeight: 0,
-    transition: 'opacity 0.15s, border-color 0.15s, box-shadow 0.15s',
+    transition: 'opacity 0.2s, border-color 0.2s, box-shadow 0.2s',
     overflow: 'hidden',
   },
   header: {
@@ -287,7 +398,7 @@ const sectionStyles: Record<string, React.CSSProperties> = {
     fontWeight: 'bold' as const,
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
-    transition: 'color 0.15s',
+    transition: 'color 0.2s',
   },
   poolCount: {
     fontSize: 10,
@@ -343,6 +454,63 @@ const sectionStyles: Record<string, React.CSSProperties> = {
   },
 };
 
+const transformStyles: Record<string, React.CSSProperties> = {
+  wrapper: {
+    width: 240,
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '12px 8px',
+    backgroundColor: colors.bg.raised,
+    border: `1px solid ${colors.border.subtle}`,
+    borderRadius: 8,
+  },
+  typeBadge: {
+    padding: '2px 8px',
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 'bold' as const,
+    textTransform: 'uppercase' as const,
+    color: colors.text.secondary,
+    letterSpacing: 0.5,
+  },
+  arrow: {
+    fontSize: 20,
+    fontFamily: 'monospace',
+    lineHeight: 1,
+  },
+  title: {
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: 'bold' as const,
+    textAlign: 'center' as const,
+    lineHeight: 1.3,
+  },
+  description: {
+    fontSize: 9,
+    fontFamily: 'monospace',
+    color: colors.text.tertiary,
+    textAlign: 'center' as const,
+    lineHeight: 1.4,
+  },
+  pseudoCode: {
+    margin: 0,
+    padding: '6px 8px',
+    fontSize: 9,
+    fontFamily: 'monospace',
+    color: colors.text.secondary,
+    backgroundColor: colors.bg.overlay,
+    borderRadius: 4,
+    lineHeight: 1.5,
+    textAlign: 'left' as const,
+    whiteSpace: 'pre' as const,
+    alignSelf: 'stretch',
+  },
+};
+
 const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
@@ -381,6 +549,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sections: {
     display: 'flex',
+    flexDirection: 'row' as const,
+    alignItems: 'stretch',
     gap: 10,
     flex: 1,
     minHeight: 0,

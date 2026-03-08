@@ -1,16 +1,16 @@
 // ============================================================================
-// individual.ts - Individual chromosome for the 8-queens problem
+// specimen.ts - Specimen chromosome for the 8-queens problem
 // Ported from C# individual.cs
 // ============================================================================
 
-import { Individual, BOARD_SIZE, MutationRecord, Age } from './types';
+import { Specimen, BOARD_SIZE, MutationRecord, Age } from './types';
 import { assessFitness } from './fitness';
 
 /**
- * Create a random individual with 8 random queen positions.
+ * Create a random specimen with 8 random queen positions.
  * Matches C# individual constructor.
  */
-export function createRandomIndividual(id: number): Individual {
+export function createRandomSpecimen(id: number): Specimen {
   const solution: number[] = [];
   for (let i = 0; i < BOARD_SIZE; i++) {
     solution.push(randomInt(0, 7));
@@ -26,9 +26,9 @@ export function createRandomIndividual(id: number): Individual {
 }
 
 /**
- * Create an individual from an existing solution array.
+ * Create a specimen from an existing solution array.
  */
-export function createIndividual(id: number, solution: number[], bornGeneration?: number, localIndex?: number): Individual {
+export function createSpecimen(id: number, solution: number[], bornGeneration?: number, localIndex?: number): Specimen {
   return {
     id,
     localIndex: localIndex ?? id,
@@ -39,65 +39,65 @@ export function createIndividual(id: number, solution: number[], bornGeneration?
   };
 }
 
-/** Format an individual's ID for display as gen.localIndex (e.g. "3.42", "-1.5"). */
-export function formatId(ind: Individual): string {
-  return `${ind.bornGeneration ?? 0}.${ind.localIndex}`;
+/** Format a specimen's ID for display as gen.localIndex (e.g. "3.42", "-1.5"). */
+export function formatId(spec: Specimen): string {
+  return `${spec.bornGeneration ?? 0}.${spec.localIndex}`;
 }
 
 /**
- * Clone an individual (deep copy).
+ * Clone a specimen (deep copy).
  */
-export function cloneIndividual(ind: Individual): Individual {
+export function cloneSpecimen(spec: Specimen): Specimen {
   return {
-    id: ind.id,
-    localIndex: ind.localIndex,
-    solution: [...ind.solution],
-    fitness: ind.fitness,
-    bornGeneration: ind.bornGeneration,
-    age: ind.age,
-    pipelineRole: ind.pipelineRole,
-    partnerIds: ind.partnerIds ? [...ind.partnerIds] : undefined,
-    parentAId: ind.parentAId,
-    parentBId: ind.parentBId,
-    crossoverPoint: ind.crossoverPoint,
-    mutated: ind.mutated,
-    preMutationSolution: ind.preMutationSolution ? [...ind.preMutationSolution] : undefined,
+    id: spec.id,
+    localIndex: spec.localIndex,
+    solution: [...spec.solution],
+    fitness: spec.fitness,
+    bornGeneration: spec.bornGeneration,
+    age: spec.age,
+    pipelineRole: spec.pipelineRole,
+    partnerIds: spec.partnerIds ? [...spec.partnerIds] : undefined,
+    parentAId: spec.parentAId,
+    parentBId: spec.parentBId,
+    crossoverPoint: spec.crossoverPoint,
+    mutated: spec.mutated,
+    preMutationSolution: spec.preMutationSolution ? [...spec.preMutationSolution] : undefined,
   };
 }
 
 /**
- * Apply mutation to an individual.
+ * Apply mutation to a specimen.
  * With probability mutationRate, pick a random gene index and assign a random value.
  * Returns a MutationRecord if mutation occurred, or null otherwise.
  * Matches C# individual.mutate().
  */
-export function mutate(ind: Individual, mutationRate: number): MutationRecord | null {
+export function mutate(spec: Specimen, mutationRate: number): MutationRecord | null {
   const roll = randomInt(1, 100);
   const threshold = Math.floor(mutationRate * 100);
 
   if (roll <= threshold) {
-    const preMutationSolution = [...ind.solution];
-    const preMutationFitness = ind.fitness;
+    const preMutationSolution = [...spec.solution];
+    const preMutationFitness = spec.fitness;
     const mutateIndex = randomInt(0, 7);
-    const oldValue = ind.solution[mutateIndex]!;
+    const oldValue = spec.solution[mutateIndex]!;
     const newValue = randomInt(0, 7);
-    ind.solution[mutateIndex] = newValue;
-    ind.fitness = assessFitness(ind.solution);
-    ind.mutated = true;
-    ind.preMutationSolution = preMutationSolution;
-    return { individual: ind, geneIndex: mutateIndex, oldValue, newValue, preMutationSolution, preMutationFitness };
+    spec.solution[mutateIndex] = newValue;
+    spec.fitness = assessFitness(spec.solution);
+    spec.mutated = true;
+    spec.preMutationSolution = preMutationSolution;
+    return { specimen: spec, geneIndex: mutateIndex, oldValue, newValue, preMutationSolution, preMutationFitness };
   }
 
   return null;
 }
 
 /**
- * Create an individual deterministically from a seed.
- * Individual i always gets the same genes for a given seed,
+ * Create a specimen deterministically from a seed.
+ * Specimen i always gets the same genes for a given seed,
  * regardless of population size.
  */
-export function createSeededIndividual(id: number, seed: number): Individual {
-  // Derive per-individual state from seed + index (golden ratio hash for spread)
+export function createSeededSpecimen(id: number, seed: number): Specimen {
+  // Derive per-specimen state from seed + index (golden ratio hash for spread)
   let s = ((seed + id * 0x9E3779B9) >>> 0);
   const next = (): number => {
     s = (s + 0x6D2B79F5) | 0;

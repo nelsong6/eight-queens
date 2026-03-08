@@ -31,7 +31,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'small-population',
     name: 'Small Population',
-    description: 'Fewer individuals to see how it affects convergence',
+    description: 'Fewer specimens to see how it affects convergence',
     config: { populationSize: 500, crossoverRange: [2, 5], mutationRate: 0.25 },
   },
 ];

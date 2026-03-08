@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBufferedAlgorithm } from './hooks/use-buffered-algorithm';
 import { Chessboard } from './components/Chessboard';
-import { ConfigPanel } from './components/ConfigPanel';
+import { ConfigPanel, InitialSettings } from './components/ConfigPanel';
+import type { InitialSettingsProps } from './components/ConfigPanel';
 import { Controls } from './components/Controls';
 import { GenerationChart } from './components/GenerationChart';
 import { HelpBar } from './components/HelpBar';
@@ -14,11 +15,11 @@ import { PipelineBar } from './components/PipelineBar';
 import { OperationPanel } from './components/OperationPanel';
 import { HelpGlossary, HELP_SECTIONS, type HelpSectionId } from './components/HelpGlossary';
 import { GettingStartedTab } from './components/GettingStartedTab';
-import type { AlgorithmConfig, Individual, GenerationResult, PoolOrigin } from './engine/types';
+import type { AlgorithmConfig, Specimen, GenerationResult, PoolOrigin, TimeCoordinate } from './engine/types';
 import { poolDisplayName, OPS_PER_GENERATION, SCREENS_PER_OP, getOp, isPipelineEmpty, reconstructPipeline, GENERATION_OPS } from './engine/time-coordinate';
 import { SubPhaseScreen } from './components/walkthrough/SubPhaseScreen';
-import { CATEGORY_COLORS } from './components/walkthrough/IndividualList';
-import { createRandomIndividual } from './engine/individual';
+import { CATEGORY_COLORS } from './components/walkthrough/SpecimenList';
+import { createRandomSpecimen } from './engine/specimen';
 import { PRESETS } from './data/presets';
 import { colors } from './colors';
 
@@ -26,12 +27,36 @@ type SessionPhase = 'config' | 'running' | 'review';
 
 interface WalkthroughState {
   operation: number;       // y-axis: 0–6
-  boundary: 0 | 1 | 2;    // t-axis: before/transform/after
+  boundary: 0 | 1;        // t-axis: 0=before, 1=after
   result: GenerationResult;
   browsePairIndex: number;
 }
 
 const OP_TAB_LABELS = ['Age', 'Prune', 'Select', 'Mark Pairs', 'Chromosomes', 'Mutate', 'Birth'];
+
+const CoordinatePanel: React.FC<{ coordinate: TimeCoordinate }> = ({ coordinate }) => {
+  const op = getOp(coordinate.operation);
+  const boundaryLabel = coordinate.boundary === 0 ? 'BEFORE' : 'AFTER';
+  const boundaryValue = coordinate.boundary === 0 ? '0' : '1';
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: 0, padding: '10px 24px 8px', flexShrink: 0, borderBottom: `1px solid ${colors.border.subtle}`, backgroundColor: colors.bg.raised }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }} data-help={`Generation ${coordinate.generation} — the current evolutionary cycle`}>
+        <span style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 'bold', color: colors.text.primary, fontVariantNumeric: 'tabular-nums', minWidth: 28, textAlign: 'center', lineHeight: 1 }}>{coordinate.generation}</span>
+        <span style={{ fontSize: 8, fontFamily: 'monospace', color: colors.text.disabled, textTransform: 'uppercase', letterSpacing: 1 }}>Generation</span>
+      </div>
+      <span style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 'bold', color: colors.border.strong, lineHeight: 1 }}>.</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }} data-help={`Operation ${coordinate.operation} — "${op.name}" (${op.category})`}>
+        <span style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 'bold', color: colors.text.primary, fontVariantNumeric: 'tabular-nums', minWidth: 28, textAlign: 'center', lineHeight: 1 }}>{coordinate.operation}</span>
+        <span style={{ fontSize: 8, fontFamily: 'monospace', color: colors.text.disabled, textTransform: 'uppercase', letterSpacing: 1 }}>Operation</span>
+      </div>
+      <span style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 'bold', color: colors.border.strong, lineHeight: 1 }}>.</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }} data-help={`${boundaryLabel} — ${coordinate.boundary === 0 ? 'input state before the operation runs' : 'output state after the operation completes'}`}>
+        <span style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 'bold', color: colors.text.primary, fontVariantNumeric: 'tabular-nums', minWidth: 28, textAlign: 'center', lineHeight: 1 }}>{boundaryValue}</span>
+        <span style={{ fontSize: 8, fontFamily: 'monospace', color: colors.text.disabled, textTransform: 'uppercase', letterSpacing: 1 }}>Progress</span>
+      </div>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const algorithm = useBufferedAlgorithm();
@@ -41,6 +66,10 @@ const App: React.FC = () => {
 
   // Walkthrough state
   const [walkthroughState, setWalkthroughState] = useState<WalkthroughState | null>(null);
+
+  // Micro auto-play
+  const [microPlaying, setMicroPlaying] = useState(false);
+  const microIntervalRef = useRef<number | null>(null);
 
   // Tabs
   const [activeTab, setActiveTab] = useState<ActiveTab>('getting-started');
@@ -56,6 +85,15 @@ const App: React.FC = () => {
     return { ...result, pipeline: reconstructPipeline(result, algorithm.peekUndoResult()) };
   }, [algorithm]);
 
+  const handleStart = useCallback(
+    (config: AlgorithmConfig) => {
+      algorithm.start(config);
+      setSessionPhase('running');
+      setWalkthroughState(null);
+    },
+    [algorithm],
+  );
+
   const handleTabChange = useCallback((tab: ActiveTab) => {
     if (tab === 'full') {
       setWalkthroughState(null);
@@ -64,7 +102,7 @@ const App: React.FC = () => {
       if (!walkthroughState && algorithm.lastResult) {
         setWalkthroughState({
           operation: OPS_PER_GENERATION - 1,
-          boundary: 2,
+          boundary: 1,
           result: withPipeline(algorithm.lastResult),
           browsePairIndex: 0,
         });
@@ -83,27 +121,48 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleStart = useCallback(
-    (config: AlgorithmConfig) => {
-      algorithm.start(config);
-      setSessionPhase('running');
-      setWalkthroughState(null);
-    },
-    [algorithm],
-  );
+  // Lifted config input state (shared between Config tab and ConfigPanel)
+  const [populationSize, setPopulationSize] = useState(100);
+  const [crossoverMin, setCrossoverMin] = useState(1);
+  const [crossoverMax, setCrossoverMax] = useState(6);
+  const [mutationRate, setMutationRate] = useState(0.25);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('quick-demo');
 
-  // Pending config from ConfigPanel (used for auto-start on first action)
-  const [pendingConfig, setPendingConfig] = useState<AlgorithmConfig>({
-    populationSize: 100,
-    crossoverRange: [1, 6],
-    mutationRate: 0.25,
-  });
+  const selectPreset = useCallback((id: string) => {
+    setSelectedPresetId(id);
+    const preset = PRESETS.find((p) => p.id === id);
+    if (preset) {
+      setPopulationSize(preset.config.populationSize);
+      setCrossoverMin(preset.config.crossoverRange[0]);
+      setCrossoverMax(preset.config.crossoverRange[1]);
+      setMutationRate(preset.config.mutationRate);
+    }
+  }, []);
+
+  const pendingConfig = useMemo<AlgorithmConfig>(() => ({
+    populationSize,
+    crossoverRange: [crossoverMin, crossoverMax],
+    mutationRate,
+  }), [populationSize, crossoverMin, crossoverMax, mutationRate]);
   const pendingConfigRef = useRef(pendingConfig);
   pendingConfigRef.current = pendingConfig;
 
-  const handleConfigChange = useCallback((config: AlgorithmConfig) => {
-    setPendingConfig(config);
-  }, []);
+  const initialSettingsProps: InitialSettingsProps = useMemo(() => ({
+    sessionPhase,
+    presets: PRESETS,
+    algorithmConfig: algorithm.algorithmConfig ?? pendingConfig,
+    populationSize,
+    setPopulationSize,
+    crossoverMin,
+    setCrossoverMin,
+    crossoverMax,
+    setCrossoverMax,
+    mutationRate,
+    setMutationRate,
+    selectedPresetId,
+    setSelectedPresetId,
+    selectPreset,
+  }), [sessionPhase, algorithm.algorithmConfig, pendingConfig, populationSize, crossoverMin, crossoverMax, mutationRate, selectedPresetId, selectPreset]);
 
   // Zoom state (used in Full tab)
   const [zoomedPanel, setZoomedPanel] = useState<string | null>(null);
@@ -163,15 +222,15 @@ const App: React.FC = () => {
   // Key to force remount of child components on reset
   const [resetKey, setResetKey] = useState(0);
 
-  // Random individual shown before algorithm starts
-  const [initialIndividual, setInitialIndividual] = useState<Individual>(() => createRandomIndividual(Math.floor(Math.random() * 50)));
+  // Random specimen shown before algorithm starts
+  const [initialSpecimen, setInitialSpecimen] = useState<Specimen>(() => createRandomSpecimen(Math.floor(Math.random() * 50)));
 
-  // Viewed individual state
-  const [viewedIndividual, setViewedIndividual] = useState<Individual | null>(null);
+  // Viewed specimen state
+  const [viewedSpecimen, setViewedSpecimen] = useState<Specimen | null>(null);
   const [viewedOrigin, setViewedOrigin] = useState<PoolOrigin | null>(null);
 
-  const handleSelectIndividual = useCallback((individual: Individual, origin: PoolOrigin) => {
-    setViewedIndividual(individual);
+  const handleSelectSpecimen = useCallback((spec: Specimen, origin: PoolOrigin) => {
+    setViewedSpecimen(spec);
     setViewedOrigin(origin);
     // In Granular Step tab, auto-switch to Specimen local sub-tab
     if (activeTab === 'micro') {
@@ -179,9 +238,9 @@ const App: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Clear viewed individual when generation advances
+  // Clear viewed specimen when generation advances
   useEffect(() => {
-    setViewedIndividual(null);
+    setViewedSpecimen(null);
     setViewedOrigin(null);
   }, [algorithm.generation]);
 
@@ -202,17 +261,17 @@ const App: React.FC = () => {
     handleTabChange('full');
   }, [ensureStarted, handleTabChange]);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback((tab: ActiveTab = 'config') => {
     algorithm.start(pendingConfigRef.current);
     activeConfigRef.current = { ...pendingConfigRef.current };
-    setViewedIndividual(null);
+    setViewedSpecimen(null);
     setViewedOrigin(null);
     setSessionPhase('config');
     setWalkthroughState(null);
-    setActiveTab('full');
+    setActiveTab(tab);
     setShowSpecimen(false);
     setZoomedPanel(null);
-    setInitialIndividual(createRandomIndividual(Math.floor(Math.random() * 50)));
+    setInitialSpecimen(createRandomSpecimen(Math.floor(Math.random() * 50)));
     setResetKey((k) => k + 1);
   }, [algorithm]);
 
@@ -221,14 +280,26 @@ const App: React.FC = () => {
   }, [handleReset]);
 
   // Pipeline bar navigation — switches to Micro tab and navigates to the clicked operation
-  const handlePipelineNavigate = useCallback((operation: number, boundary: 0 | 1 | 2) => {
+  const handlePipelineNavigate = useCallback((operation: number, boundary: 0 | 1) => {
+    const wasConfig = sessionPhase === 'config';
+    // Clicking the current position (x.6.1) during config is a no-op
+    if (wasConfig && operation === OPS_PER_GENERATION - 1 && boundary === 1) return;
     ensureStarted();
     setShowSpecimen(false);
+    if (wasConfig) {
+      // Auto-start from config: step to gen 1 and navigate there
+      const result = algorithm.step();
+      if (result) {
+        if (activeTab !== 'micro') setActiveTab('micro');
+        setWalkthroughState({ operation, boundary, result, browsePairIndex: 0 });
+      }
+      return;
+    }
     // Gen 0 floor guard — don't allow navigating before the starting point
     const currentGen = walkthroughState?.result.generationNumber ?? algorithm.lastResult?.generationNumber ?? 0;
     if (currentGen === 0) {
       const currentOp = walkthroughState?.operation ?? OPS_PER_GENERATION - 1;
-      const currentBoundary = walkthroughState?.boundary ?? 2;
+      const currentBoundary = walkthroughState?.boundary ?? 1;
       if (operation * SCREENS_PER_OP + boundary < currentOp * SCREENS_PER_OP + currentBoundary) return;
     }
     if (activeTab !== 'micro') {
@@ -239,12 +310,21 @@ const App: React.FC = () => {
     } else if (algorithm.lastResult) {
       setWalkthroughState({ operation, boundary, result: withPipeline(algorithm.lastResult), browsePairIndex: 0 });
     }
-  }, [activeTab, walkthroughState, algorithm, ensureStarted, withPipeline]);
+  }, [activeTab, walkthroughState, algorithm, ensureStarted, withPipeline, sessionPhase]);
 
   // Operation sub-tab click in Granular Step tab
   const handleSelectOperation = useCallback((op: number) => {
+    const wasConfig = sessionPhase === 'config';
     ensureStarted();
     setShowSpecimen(false);
+    if (wasConfig) {
+      // Auto-start from config: step to gen 1 and navigate there
+      const result = algorithm.step();
+      if (result) {
+        setWalkthroughState({ operation: op, boundary: 0, result, browsePairIndex: 0 });
+      }
+      return;
+    }
     // Gen 0 floor guard — don't allow navigating before the starting point
     const currentGen = walkthroughState?.result.generationNumber ?? algorithm.lastResult?.generationNumber ?? 0;
     if (currentGen === 0) {
@@ -256,31 +336,21 @@ const App: React.FC = () => {
     } else if (algorithm.lastResult) {
       setWalkthroughState({ operation: op, boundary: 0, result: withPipeline(algorithm.lastResult), browsePairIndex: 0 });
     }
-  }, [walkthroughState, algorithm, ensureStarted, withPipeline]);
+  }, [walkthroughState, algorithm, ensureStarted, withPipeline, sessionPhase]);
 
-  // Clicking an inactive phase section in OperationPanel jumps boundary directly
-  const handleBoundaryChange = useCallback((boundary: 0 | 1 | 2) => {
-    if (walkthroughState) {
-      // Gen 0 is the chronological floor — don't allow navigating backward past the starting point
-      if (walkthroughState.result.generationNumber === 0 && boundary < walkthroughState.boundary) {
-        return;
-      }
-      setWalkthroughState({ ...walkthroughState, boundary });
-    }
-  }, [walkthroughState]);
 
-  // Walkthrough: advance boundary 0→1→2, then operation+1 boundary 0.
-  // After op 6 boundary 2, run next generation starting at op 0 boundary 0.
+  // Walkthrough: advance boundary 0→1, then operation+1 boundary 0.
+  // After op 6 boundary 1, run next generation starting at op 0 boundary 0.
   const handleWalkThrough = useCallback(() => {
     ensureStarted();
     setShowSpecimen(false);
     if (!walkthroughState) {
       const result = algorithm.lastResult;
       if (result) {
-        setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: withPipeline(result), browsePairIndex: 0 });
+        setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 1, result: withPipeline(result), browsePairIndex: 0 });
       }
-    } else if (walkthroughState.boundary < 2) {
-      setWalkthroughState({ ...walkthroughState, boundary: (walkthroughState.boundary + 1) as 0 | 1 | 2 });
+    } else if (walkthroughState.boundary < 1) {
+      setWalkthroughState({ ...walkthroughState, boundary: 1 });
     } else if (walkthroughState.operation < OPS_PER_GENERATION - 1) {
       setWalkthroughState({ ...walkthroughState, operation: walkthroughState.operation + 1, boundary: 0 });
     } else {
@@ -300,7 +370,8 @@ const App: React.FC = () => {
   const handlePlay = useCallback((stepCount: number) => {
     ensureStarted();
     if (activeTab === 'micro') {
-      setActiveTab('full');
+      setMicroPlaying(true);
+      return;
     }
     setWalkthroughState(null);
     setShowSpecimen(false);
@@ -320,8 +391,43 @@ const App: React.FC = () => {
   }, [ensureStarted, algorithm]);
 
   const handlePause = useCallback(() => {
+    if (microPlaying) {
+      setMicroPlaying(false);
+      return;
+    }
     algorithm.pause();
-  }, [algorithm]);
+  }, [algorithm, microPlaying]);
+
+  // Keep a ref to handleWalkThrough so the interval always calls the latest version
+  const walkThroughRef = useRef(handleWalkThrough);
+  walkThroughRef.current = handleWalkThrough;
+
+  // Micro auto-play: drive handleWalkThrough on an interval controlled by speed
+  useEffect(() => {
+    if (microIntervalRef.current != null) {
+      clearInterval(microIntervalRef.current);
+      microIntervalRef.current = null;
+    }
+    if (!microPlaying || algorithm.solved) {
+      if (algorithm.solved) setMicroPlaying(false);
+      return;
+    }
+    const delay = Math.max(1, 501 - algorithm.speed);
+    microIntervalRef.current = window.setInterval(() => {
+      walkThroughRef.current();
+    }, delay);
+    return () => {
+      if (microIntervalRef.current != null) {
+        clearInterval(microIntervalRef.current);
+        microIntervalRef.current = null;
+      }
+    };
+  }, [microPlaying, algorithm.speed, algorithm.solved]);
+
+  // Stop micro auto-play when leaving micro tab
+  useEffect(() => {
+    if (activeTab !== 'micro') setMicroPlaying(false);
+  }, [activeTab]);
 
   const handleBack = useCallback(() => {
     if (showSpecimen) {
@@ -330,26 +436,26 @@ const App: React.FC = () => {
     }
     if (walkthroughState) {
       if (granularity === 'micro') {
-        // Gen 0 is the chronological floor — back exits to config
+        // Gen 0 is the chronological floor — back exits to getting-started
         if (walkthroughState.result.generationNumber === 0) {
           setWalkthroughState(null);
-          handleReset();
+          handleReset('getting-started');
           return;
         }
         if (walkthroughState.boundary > 0) {
-          setWalkthroughState({ ...walkthroughState, boundary: (walkthroughState.boundary - 1) as 0 | 1 | 2 });
+          setWalkthroughState({ ...walkthroughState, boundary: 0 });
           return;
         }
         if (walkthroughState.operation > 0) {
-          setWalkthroughState({ ...walkthroughState, operation: walkthroughState.operation - 1, boundary: 2 });
+          setWalkthroughState({ ...walkthroughState, operation: walkthroughState.operation - 1, boundary: 1 });
           return;
         }
         const restored = algorithm.goBack();
         if (restored) {
-          setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 2, result: restored.result, browsePairIndex: 0 });
+          setWalkthroughState({ operation: OPS_PER_GENERATION - 1, boundary: 1, result: restored.result, browsePairIndex: 0 });
         } else {
           setWalkthroughState(null);
-          handleReset();
+          handleReset('getting-started');
         }
         return;
       }
@@ -371,47 +477,46 @@ const App: React.FC = () => {
     }
   }, [algorithm.solved]);
 
-  const hasStarted = algorithm.generation > 0 || algorithm.bestIndividual !== null;
+  const hasStarted = algorithm.generation > 0 || algorithm.bestSpecimen !== null;
 
-  // Display logic: viewed individual takes priority, fall back to initial random
-  const displayIndividual = viewedIndividual ?? algorithm.solutionIndividual ?? algorithm.bestIndividual ?? initialIndividual;
-  const displayIsBest = displayIndividual != null && algorithm.bestIndividual != null && displayIndividual.id === algorithm.bestIndividual.id;
-  const displayIsSolution = displayIndividual != null && displayIndividual.fitness === 28;
+  // Display logic: viewed specimen takes priority, fall back to initial random
+  const displaySpecimen = viewedSpecimen ?? algorithm.solutionSpecimen ?? algorithm.bestSpecimen ?? initialSpecimen;
+  const displayIsBest = displaySpecimen != null && algorithm.bestSpecimen != null && displaySpecimen.id === algorithm.bestSpecimen.id;
+  const displayIsSolution = displaySpecimen != null && displaySpecimen.fitness === 28;
   const displayOrigin: PoolOrigin | null = viewedOrigin
-    ?? (hasStarted ? { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 }, pool: 'finalChildren' as const } : null);
+    ?? (hasStarted ? { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 1 }, pool: 'finalChildren' as const } : null);
 
   // Status message matching C# behavior
-  const statusMessage = useMemo<{ label: string; value: string; individual?: Individual; origin?: PoolOrigin }>(() => {
-    if (viewedIndividual) {
-      return { label: viewedOrigin ? poolDisplayName(viewedOrigin) : 'Individual', value: `f:${viewedIndividual.fitness}/28` };
+  const statusMessage = useMemo<{ label: string; value: string; specimen?: Specimen; origin?: PoolOrigin }>(() => {
+    if (viewedSpecimen) {
+      return { label: viewedOrigin ? poolDisplayName(viewedOrigin) : 'Specimen', value: `f:${viewedSpecimen.fitness}/28` };
     }
-    const finalOrigin: PoolOrigin = { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 }, pool: 'finalChildren' as const };
-    if (algorithm.solved && algorithm.solutionIndividual) {
-      const sol = algorithm.solutionIndividual.solution.join(' ');
-      return { label: 'Solution', value: `[${sol}]`, individual: algorithm.solutionIndividual, origin: finalOrigin };
+    const finalOrigin: PoolOrigin = { coordinate: { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 1 }, pool: 'finalChildren' as const };
+    if (algorithm.solved && algorithm.solutionSpecimen) {
+      const sol = algorithm.solutionSpecimen.solution.join(' ');
+      return { label: 'Solution', value: `[${sol}]`, specimen: algorithm.solutionSpecimen, origin: finalOrigin };
     }
     if (algorithm.lastResult) {
-      const best = algorithm.lastResult.bestIndividual;
+      const best = algorithm.lastResult.bestSpecimen;
       const sol = best.solution.join(' ');
-      return { label: 'Best specimen', value: `[${sol}]`, individual: best, origin: finalOrigin };
+      return { label: 'Best specimen', value: `[${sol}]`, specimen: best, origin: finalOrigin };
     }
     return { label: 'Best specimen', value: '' };
-  }, [viewedIndividual, viewedOrigin, algorithm.solved, algorithm.solutionIndividual, algorithm.lastResult, algorithm.generation]);
+  }, [viewedSpecimen, viewedOrigin, algorithm.solved, algorithm.solutionSpecimen, algorithm.lastResult, algorithm.generation]);
 
   // Pipeline bar coordinate
   const currentCoordinate = walkthroughState
     ? { generation: walkthroughState.result.generationNumber, operation: walkthroughState.operation, boundary: walkthroughState.boundary }
     : hasStarted
-      ? { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 2 as const }
-      : { generation: 0, operation: OPS_PER_GENERATION - 1, boundary: 2 as const };
+      ? { generation: algorithm.generation, operation: OPS_PER_GENERATION - 1, boundary: 1 as const }
+      : { generation: 0, operation: OPS_PER_GENERATION - 1, boundary: 1 as const };
 
-  // Can go back?
+  // Can go back? In micro mode always allow back when walkthroughState exists —
+  // handleBack handles gen 0 by resetting to getting-started.
   const canGoBackValue = showSpecimen
     ? true
     : walkthroughState
-      ? activeTab === 'micro'
-        ? walkthroughState.result.generationNumber !== 0
-        : true
+      ? true
       : algorithm.canGoBack;
 
   return (
@@ -429,29 +534,12 @@ const App: React.FC = () => {
           </div>
         </header>
         <HelpBar onOpenGlossary={handleOpenGlossary} />
+        {hasStarted && <CoordinatePanel coordinate={currentCoordinate} />}
         <PipelineBar
           coordinate={currentCoordinate}
           onNavigate={handlePipelineNavigate}
           hasResult={!!algorithm.lastResult}
         />
-        <Controls
-            sessionPhase={sessionPhase}
-            isRunning={algorithm.running}
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onStep={activeTab === 'micro' ? handleWalkThrough : handleStep}
-            onStepN={handleStepN}
-            onBack={handleBack}
-            canGoBack={canGoBackValue}
-            onReset={handleReset}
-            onNewSession={handleNewSession}
-            speed={algorithm.speed}
-            onSpeedChange={algorithm.setSpeed}
-            solved={algorithm.solved}
-            walkthroughPhase={walkthroughState ? walkthroughState.operation * SCREENS_PER_OP + walkthroughState.boundary : null}
-            isMicro={activeTab === 'micro'}
-            coordinate={hasStarted ? currentCoordinate : undefined}
-          />
         <BreadcrumbTrail
           sessionPhase={sessionPhase}
           activeTab={activeTab}
@@ -459,10 +547,12 @@ const App: React.FC = () => {
           browsePairIndex={walkthroughState?.browsePairIndex ?? null}
           zoomedPanel={zoomedPanel}
           breedingCategory=""
+          showSpecimen={showSpecimen}
           onTabChange={handleTabChange}
           onSetGranularity={(g) => handleTabChange(g)}
           onClearWalkthrough={() => setWalkthroughState(null)}
           onClearZoom={() => setZoomedPanel(null)}
+          onClearSpecimen={() => setShowSpecimen(false)}
         />
       </div>
 
@@ -509,7 +599,7 @@ const App: React.FC = () => {
                         className="tab-nav"
                         onClick={() => handleSelectOperation(idx)}
                         disabled={isBackwardAtFloor}
-                        data-help={`${op.category}: ${op.name}`}
+                        data-help={isBackwardAtFloor ? "The algorithm is at its earliest step, so you can't traverse backwards." : `${op.category}: ${op.name}`}
                         style={{
                           ...styles.opTab,
                           color: isActive ? opColor : colors.text.tertiary,
@@ -527,14 +617,14 @@ const App: React.FC = () => {
                   <button
                     className="tab-nav"
                     onClick={() => setShowSpecimen(true)}
-                    data-help="Inspect an individual's genome, fitness, parentage, and mutation"
+                    data-help="Inspect a specimen's genome, fitness, parentage, and mutation"
                     style={{
                       ...styles.opTab,
                       color: showSpecimen ? colors.accent.purple : colors.text.tertiary,
                       fontWeight: showSpecimen ? 'bold' : 'normal',
                     }}
                   >
-                    Specimen{viewedIndividual ? ' \u25cf' : ''}
+                    Specimen{viewedSpecimen ? ' \u25cf' : ''}
                   </button>
                 </div>
               </>
@@ -561,6 +651,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Phase tab strip — Before / Transform / After */}
         {/* Tab content area */}
         <div style={styles.tabContent}>
 
@@ -573,25 +664,68 @@ const App: React.FC = () => {
           />
         )}
 
+        {/* ── Config tab ─────────────────────────────────────────── */}
+        {activeTab === 'config' && (
+          <div style={styles.configTab}>
+            <div style={styles.configTabColumn}>
+              <div style={styles.configTabPanel}>
+                <h3 style={styles.configTabTitle} data-help="Set algorithm parameters before starting a run">Config</h3>
+                <InitialSettings {...initialSettingsProps} />
+              </div>
+              {sessionPhase === 'config' && (
+                <div style={styles.configStartButtons}>
+                  <button style={styles.configStartBtn} onClick={handleStartMicro}>
+                    Start Granular →
+                  </button>
+                  <button style={styles.configStartBtnSecondary} onClick={handleStartFull}>
+                    Start Full →
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Full Step tab ───────────────────────────────────────── */}
         {activeTab === 'full' && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          <div style={styles.controlsRow}>
+            <Controls
+              sessionPhase={sessionPhase}
+              isRunning={algorithm.running}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onStep={handleStep}
+              onStepN={handleStepN}
+              onBack={handleBack}
+              canGoBack={canGoBackValue}
+              onReset={handleReset}
+              onNewSession={handleNewSession}
+              speed={algorithm.speed}
+              onSpeedChange={algorithm.setSpeed}
+              solved={algorithm.solved}
+              walkthroughPhase={null}
+              isMicro={false}
+              barStyle={styles.embeddedControls}
+            />
+          </div>
           <div style={styles.columns}>
             {/* Column 1: SubPhaseScreen (end of gen) */}
-            <div style={styles.column}>
+            <div style={{ ...styles.column, flex: '1.3 1 0' }}>
               <ZoomablePanel id="breeding" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef} zoomedMaxWidth={900}>
                 {walkthroughState ? (
                   <SubPhaseScreen
                     coordinate={{ generation: walkthroughState.result.generationNumber, operation: walkthroughState.operation, boundary: walkthroughState.boundary }}
                     result={walkthroughState.result}
-                    onSelectIndividual={handleSelectIndividual}
+                    onSelectSpecimen={handleSelectSpecimen}
                     browsePairIndex={walkthroughState.browsePairIndex}
                     onPairChange={handleWalkthroughPairChange}
                   />
                 ) : algorithm.lastResult ? (
                   <SubPhaseScreen
-                    coordinate={{ generation: algorithm.lastResult.generationNumber, operation: OPS_PER_GENERATION - 1, boundary: 2 }}
+                    coordinate={{ generation: algorithm.lastResult.generationNumber, operation: OPS_PER_GENERATION - 1, boundary: 1 }}
                     result={withPipeline(algorithm.lastResult)}
-                    onSelectIndividual={handleSelectIndividual}
+                    onSelectSpecimen={handleSelectSpecimen}
                     browsePairIndex={0}
                     onPairChange={() => {}}
                   />
@@ -607,32 +741,31 @@ const App: React.FC = () => {
             <div style={styles.column}>
               <ZoomablePanel id="board" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
                 <Chessboard
-                  individual={displayIndividual}
+                  specimen={displaySpecimen}
                   showAttacks={hasStarted}
                   speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
                   zoomed={zoomedPanel === 'board'}
                 />
                 <SpecimenPanel
-                  individual={displayIndividual}
+                  specimen={displaySpecimen}
                   breedingData={algorithm.lastResult?.breedingData ?? null}
                   generation={algorithm.generation}
                   isBest={displayIsBest}
                   isSolution={displayIsSolution}
-                  onSelectIndividual={handleSelectIndividual}
+                  onSelectSpecimen={handleSelectSpecimen}
                   viewedOrigin={displayOrigin}
                 />
               </ZoomablePanel>
             </div>
 
             {/* Column 3: Config */}
-            <div style={{ ...styles.column, flex: '0.7 1 0' }}>
+            <div style={{ ...styles.column, flex: '0.7 1 0', overflowY: 'auto' }}>
+              <div style={styles.initialSettingsBox}>
+                <InitialSettings {...initialSettingsProps} />
+              </div>
               <ZoomablePanel id="config" zoomedId={zoomedPanel} onZoom={setZoomedPanel} containerRef={mainRef}>
                 <ConfigPanel
                   key={`config-${resetKey}`}
-                  onConfigChange={handleConfigChange}
-                  sessionPhase={sessionPhase}
-                  presets={PRESETS}
-                  algorithmConfig={algorithm.algorithmConfig ?? pendingConfig}
                   stepStatistics={algorithm.lastResult?.stepStatistics ?? null}
                   cumulativeStats={algorithm.cumulativeStats}
                   generation={algorithm.generation}
@@ -640,8 +773,8 @@ const App: React.FC = () => {
                   avgFitness={algorithm.avgFitness}
                   solved={algorithm.solved}
                   statusMessage={statusMessage}
-                  onStatusClick={statusMessage?.individual && statusMessage?.origin ? () => {
-                    handleSelectIndividual(statusMessage.individual!, statusMessage.origin!);
+                  onStatusClick={statusMessage?.specimen && statusMessage?.origin ? () => {
+                    handleSelectSpecimen(statusMessage.specimen!, statusMessage.origin!);
                   } : undefined}
                 />
               </ZoomablePanel>
@@ -654,11 +787,32 @@ const App: React.FC = () => {
               </ZoomablePanel>
             </div>
           </div>
+          </div>
         )}
 
         {/* ── Granular Step tab ───────────────────────────────────── */}
         {activeTab === 'micro' && (
           <div style={styles.microContent}>
+          <div style={styles.controlsRow}>
+            <Controls
+              sessionPhase={sessionPhase}
+              isRunning={microPlaying}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onStep={handleWalkThrough}
+              onStepN={handleStepN}
+              onBack={handleBack}
+              canGoBack={canGoBackValue}
+              onReset={handleReset}
+              onNewSession={handleNewSession}
+              speed={algorithm.speed}
+              onSpeedChange={algorithm.setSpeed}
+              solved={algorithm.solved}
+              walkthroughPhase={walkthroughState ? walkthroughState.operation * SCREENS_PER_OP + walkthroughState.boundary : null}
+              isMicro={true}
+              barStyle={styles.embeddedControls}
+            />
+          </div>
           {showSpecimen ? (
             <div style={styles.specimenLayout}>
               <div style={styles.specimenToolbar}>
@@ -672,19 +826,19 @@ const App: React.FC = () => {
               <div style={styles.specimenContent}>
                 <div style={styles.specimenBoard}>
                   <Chessboard
-                    individual={displayIndividual}
+                    specimen={displaySpecimen}
                     showAttacks={hasStarted}
                     speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
                   />
                 </div>
                 <div style={styles.specimenDetail}>
                   <SpecimenPanel
-                    individual={displayIndividual}
+                    specimen={displaySpecimen}
                     breedingData={algorithm.lastResult?.breedingData ?? null}
                     generation={algorithm.generation}
                     isBest={displayIsBest}
                     isSolution={displayIsSolution}
-                    onSelectIndividual={handleSelectIndividual}
+                    onSelectSpecimen={handleSelectSpecimen}
                     viewedOrigin={displayOrigin}
                   />
                 </div>
@@ -695,10 +849,10 @@ const App: React.FC = () => {
               operation={walkthroughState.operation}
               boundary={walkthroughState.boundary}
               result={walkthroughState.result}
-              onSelectIndividual={handleSelectIndividual}
+              onSelectSpecimen={handleSelectSpecimen}
               browsePairIndex={walkthroughState.browsePairIndex}
               onPairChange={handleWalkthroughPairChange}
-              onBoundaryChange={handleBoundaryChange}
+              onBoundaryClick={(b) => handlePipelineNavigate(walkthroughState.operation, b)}
             />
           ) : (
             <div style={styles.microEmpty}>
@@ -850,6 +1004,7 @@ const styles: Record<string, React.CSSProperties> = {
   opTabWrapper: {
     padding: '1px 0 1px 1px',
     position: 'relative' as const,
+    marginBottom: -1,
   },
   opTabWrapperActive: {
     padding: 0,
@@ -884,6 +1039,17 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '4px 6px',
     backgroundColor: colors.border.subtle,
     flexShrink: 0,
+  },
+  controlsRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderBottom: `1px solid ${colors.border.subtle}`,
+  },
+  embeddedControls: {
+    backgroundColor: 'transparent',
+    borderBottom: 'none',
+    padding: '10px 16px',
   },
   microContent: {
     display: 'flex',
@@ -930,6 +1096,70 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minWidth: 0,
     overflow: 'auto',
+  },
+  initialSettingsBox: {
+    backgroundColor: colors.bg.surface,
+    borderRadius: 8,
+    padding: 16,
+    border: `1px solid ${colors.border.subtle}`,
+    boxSizing: 'border-box' as const,
+  },
+  configTab: {
+    display: 'flex',
+    justifyContent: 'center',
+    paddingTop: 24,
+    flex: 1,
+  },
+  configTabColumn: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignSelf: 'flex-start',
+    minWidth: 260,
+    maxWidth: 360,
+  },
+  configTabPanel: {
+    backgroundColor: colors.bg.surface,
+    borderRadius: 8,
+    padding: 16,
+    border: `1px solid ${colors.border.subtle}`,
+  },
+  configTabTitle: {
+    margin: '0 0 12px 0',
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: colors.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1,
+  },
+  configStartButtons: {
+    display: 'flex',
+    gap: 8,
+    marginTop: 8,
+  },
+  configStartBtn: {
+    flex: 1,
+    padding: '7px 0',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    backgroundColor: colors.accent.purple,
+    color: '#fff',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    letterSpacing: 0.3,
+  },
+  configStartBtnSecondary: {
+    flex: 1,
+    padding: '7px 0',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    backgroundColor: colors.bg.raised,
+    color: colors.text.secondary,
+    border: `1px solid ${colors.border.subtle}`,
+    borderRadius: 4,
+    cursor: 'pointer',
+    letterSpacing: 0.3,
   },
   microEmpty: {
     flex: 1,

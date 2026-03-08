@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { colors } from '../colors';
 import { Chessboard } from './Chessboard';
-import type { Individual } from '../engine/types';
+import type { Specimen } from '../engine/types';
 
 interface Props {
   onStartMicro: () => void;
@@ -43,8 +43,8 @@ const ALL_SOLUTIONS = solveQueens(); // 92 solutions
 // ---------------------------------------------------------------------------
 
 function MiniBoard({ solution }: { solution: number[] }) {
-  const individual: Individual = { id: 0, localIndex: 0, solution, fitness: 28, age: 2 };
-  return <Chessboard individual={individual} showAttacks={false} />;
+  const specimen: Specimen = { id: 0, localIndex: 0, solution, fitness: 28, age: 2 };
+  return <Chessboard specimen={specimen} showAttacks={false} />;
 }
 
 // ---------------------------------------------------------------------------

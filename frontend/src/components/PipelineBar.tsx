@@ -6,14 +6,14 @@
 import React from 'react';
 import type { TimeCoordinate } from '../engine/types';
 import { GENERATION_OPS, OPS_PER_GENERATION, SCREENS_PER_OP } from '../engine/time-coordinate';
-import { CATEGORY_COLORS } from './walkthrough/IndividualList';
+import { CATEGORY_COLORS } from './walkthrough/SpecimenList';
 import { colors } from '../colors';
 
-const BOUNDARY_LABELS = ['Before', 'Transform', 'After'] as const;
+const BOUNDARY_LABELS = ['Before', 'After'] as const;
 
 interface Props {
   coordinate: TimeCoordinate;
-  onNavigate: (operation: number, boundary: 0 | 1 | 2) => void;
+  onNavigate: (operation: number, boundary: 0 | 1) => void;
   /** Dims the bar when there is no result data yet */
   hasResult: boolean;
 }
@@ -33,15 +33,15 @@ export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult
         <span style={styles.stepTotal}>{totalSteps}</span>
       </div>
 
-      {/* Main bar: 21 segments (7 operations × 3 boundaries) */}
+      {/* Main bar: 14 segments (7 operations × 2 boundaries) */}
       <div style={styles.barWrap}>
-        <div key={coordinate.generation} style={styles.bar}>
+        <div style={styles.bar}>
           {GENERATION_OPS.map((op, opIdx) => {
             const color = CATEGORY_COLORS[op.category] ?? colors.text.disabled;
             const isActiveOp = coordinate.operation === opIdx;
             return (
               <div key={opIdx} style={{ ...styles.opGroup, outline: isActiveOp ? `1px solid ${color}55` : 'none' }}>
-                {([0, 1, 2] as const).map((bIdx) => {
+                {([0, 1] as const).map((bIdx) => {
                   const stepIdx = opIdx * SCREENS_PER_OP + bIdx;
                   const isCurrent = currentStep === stepIdx;
                   const isPast = currentStep > stepIdx;
@@ -54,7 +54,7 @@ export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult
                         ...styles.segment,
                         flex: 1,
                         backgroundColor: isCurrent ? color : isPast ? color + '55' : colors.bg.raised,
-                        borderRight: bIdx < 2 ? `1px solid ${isPast || isCurrent ? color + '33' : colors.bg.base}` : 'none',
+                        borderRight: bIdx < 1 ? `1px solid ${isPast || isCurrent ? color + '33' : colors.bg.base}` : 'none',
                         boxShadow: isCurrent ? `0 0 8px ${color}99` : 'none',
                       }}
                     />
@@ -69,6 +69,7 @@ export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult
         <div style={styles.labels}>
           {GENERATION_OPS.map((op, opIdx) => {
             const isActive = coordinate.operation === opIdx;
+            const isPastOp = coordinate.operation > opIdx;
             const color = CATEGORY_COLORS[op.category] ?? colors.text.disabled;
             return (
               <div
@@ -76,7 +77,7 @@ export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult
                 onClick={() => onNavigate(opIdx, 0)}
                 style={{
                   ...styles.label,
-                  color: isActive ? color : colors.text.disabled,
+                  color: isActive ? color : isPastOp ? color + '88' : colors.text.tertiary,
                   fontWeight: isActive ? 'bold' : 'normal',
                   cursor: 'pointer',
                 }}

@@ -1,11 +1,11 @@
 /**
  * Shared components extracted from SubPhaseScreen:
- * - IndividualList: virtualized sortable table of individuals
+ * - SpecimenList: virtualized sortable table of specimens
  * - TransformView: operation flow diagram (input→transform→output)
  * - CATEGORY_COLORS, OP_POOL_TRANSITIONS: shared data
  */
-import React, { useMemo, useRef } from 'react';
-import type { Individual, Age, GenerationResult, TimeCoordinate } from '../../engine/types';
+import React, { useRef } from 'react';
+import type { Specimen, Age, GenerationResult, TimeCoordinate } from '../../engine/types';
 import { getOp, getTransformDescription, getPipelineState } from '../../engine/time-coordinate';
 import {
   createColumnHelper,
@@ -18,7 +18,7 @@ import {
   type ColumnFiltersState,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { formatId } from '../../engine/individual';
+import { formatId } from '../../engine/specimen';
 import { colors } from '../../colors';
 
 export const AGE_COLORS: Record<Age, string> = {
@@ -28,18 +28,18 @@ export const AGE_COLORS: Record<Age, string> = {
   3: colors.age.elder,
 };
 
-const COL_ID = '48px';
-const COL_GENE = '28px';
-const COL_FIT = '30px';
-const COL_AGE = '30px';
+export const COL_ID = '48px';
+export const COL_GENE = '28px';
+export const COL_FIT = '30px';
+export const COL_AGE = '30px';
 export const ITEM_HEIGHT = 28;
 
-const CELL: React.CSSProperties = {
+export const CELL: React.CSSProperties = {
   borderRight: `1px solid ${colors.border.subtle}`,
   padding: '0 3px',
 };
 
-const GRID_COLS = `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT} ${COL_AGE}`;
+export const GRID_COLS = `${COL_ID} repeat(8, ${COL_GENE}) ${COL_FIT} ${COL_AGE}`;
 
 export const CATEGORY_COLORS: Record<string, string> = {
   Aging: colors.category.aging,
@@ -52,13 +52,13 @@ export const CATEGORY_COLORS: Record<string, string> = {
 
 /** Describes before→after pool transitions for each operation. */
 export const OP_POOL_TRANSITIONS: Record<number, { from: string[]; to: string[]; arrow: string }> = {
-  0: { from: ['Old Parents', 'Previous Children'], to: ['Eligible Adults', 'Elders'], arrow: 'All individuals age: children→adults, adults→elders' },
+  0: { from: ['Old Parents', 'Previous Children'], to: ['Eligible Adults', 'Elders'], arrow: 'All specimens age: children→adults, adults→elders' },
   1: { from: ['Eligible Adults', 'Elders'], to: ['Eligible Adults'], arrow: 'Elders removed from population' },
   2: { from: ['Eligible Adults'], to: ['Selected Pairs', 'Unselected'], arrow: 'Roulette wheel picks breeding pairs' },
   3: { from: ['Selected Pairs', 'Unselected'], to: ['Mated Parents', 'Unselected'], arrow: 'Pairs assigned as breeding partners (A, B)' },
   4: { from: ['Mated Parents', 'Unselected'], to: ['Mated Parents', 'Unselected', 'Chromosomes'], arrow: 'Single-point crossover produces 2 children per pair' },
   5: { from: ['Chromosomes'], to: ['Chromosomes'], arrow: 'Random gene replaced at configured mutation rate' },
-  6: { from: ['Chromosomes'], to: ['Children'], arrow: 'Fitness evaluated; chromosomes become individuals' },
+  6: { from: ['Chromosomes'], to: ['Children'], arrow: 'Fitness evaluated; chromosomes become specimens' },
 };
 
 /** Renders the operation flow diagram (input pools → transform → output pools). */
@@ -71,7 +71,7 @@ export const TransformView: React.FC<{
   const op = getOp(coordinate.operation);
 
   const beforeSnap = getPipelineState(result.pipeline, coordinate.operation, 0);
-  const afterSnap = getPipelineState(result.pipeline, coordinate.operation, 2);
+  const afterSnap = getPipelineState(result.pipeline, coordinate.operation, 1);
   const beforeCount = beforeSnap.length;
   const afterCount = afterSnap.length;
 
@@ -102,7 +102,7 @@ export const TransformView: React.FC<{
             <span style={transformStyles.arrowHead}>&rarr;</span>
           </div>
           <div style={{ ...transformStyles.deltaLabel, color: deltaColor }}>
-            {deltaLabel} individuals
+            {deltaLabel} specimens
           </div>
         </div>
 
@@ -120,7 +120,7 @@ export const TransformView: React.FC<{
   );
 };
 
-const columnHelper = createColumnHelper<Individual>();
+const columnHelper = createColumnHelper<Specimen>();
 
 const columns = [
   columnHelper.accessor('id', {
@@ -153,21 +153,21 @@ const columns = [
   }),
 ];
 
-/** Virtualized, sortable grid of individuals. Set `flex` to fill a flex container. */
-export const IndividualList: React.FC<{
-  individuals: Individual[];
-  onClickItem: (ind: Individual) => void;
+/** Virtualized, sortable grid of specimens. Set `flex` to fill a flex container. */
+export const SpecimenList: React.FC<{
+  specimens: Specimen[];
+  onClickItem: (ind: Specimen) => void;
   sorting: SortingState;
   onSortingChange: React.Dispatch<React.SetStateAction<SortingState>>;
   columnFilters: ColumnFiltersState;
   onColumnFiltersChange: React.Dispatch<React.SetStateAction<ColumnFiltersState>>;
   /** If true, list fills its flex container instead of a fixed 300px height */
   flex?: boolean;
-}> = ({ individuals, onClickItem, sorting, onSortingChange, columnFilters, onColumnFiltersChange, flex = false }) => {
+}> = ({ specimens, onClickItem, sorting, onSortingChange, columnFilters, onColumnFiltersChange, flex = false }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const table = useReactTable({
-    data: individuals,
+    data: specimens,
     columns,
     state: { sorting, columnFilters },
     onSortingChange,
@@ -188,16 +188,9 @@ export const IndividualList: React.FC<{
     overscan: 5,
   });
 
-  const idWidth = useMemo(() => {
-    let maxLen = 3;
-    for (const ind of individuals) {
-      const len = formatId(ind).length;
-      if (len > maxLen) maxLen = len;
-    }
-    return maxLen;
-  }, [individuals]);
+  const idWidth = 6; // Fixed width to prevent layout shift when filtering
 
-  if (individuals.length === 0) {
+  if (specimens.length === 0) {
     return <div style={listStyles.emptyPool}>Empty</div>;
   }
 
@@ -275,8 +268,8 @@ export const IndividualList: React.FC<{
           })}
         </div>
       </div>
-      {rows.length < individuals.length && (
-        <div style={listStyles.filterCount}>{rows.length} of {individuals.length} shown</div>
+      {rows.length < specimens.length && (
+        <div style={listStyles.filterCount}>{rows.length} of {specimens.length} shown</div>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import React from 'react';
 import { colors } from '../colors';
 
-export type ActiveTab = 'getting-started' | 'full' | 'micro' | 'help';
+export type ActiveTab = 'getting-started' | 'config' | 'full' | 'micro' | 'help';
 
 type SessionPhase = 'config' | 'running' | 'review';
 
@@ -24,6 +24,11 @@ export const TabBar: React.FC<Props> = ({ activeTab, onTabChange, sessionPhase }
       id: 'getting-started',
       label: 'Getting Started',
       helpText: 'Introduction, help bar guide, and quick-start buttons',
+    },
+    {
+      id: 'config',
+      label: 'Config',
+      helpText: 'Algorithm parameters: population size, crossover range, and mutation rate',
     },
     {
       id: 'micro',
@@ -97,6 +102,7 @@ const styles: Record<string, React.CSSProperties> = {
   wrapper: {
     padding: '1px 0 1px 1px',
     position: 'relative' as const,
+    marginBottom: -1,
   },
   wrapperActive: {
     padding: 0,

@@ -7,11 +7,11 @@ interface Props {
 }
 
 export const ResultsPhase: React.FC<Props> = ({ result }) => {
-  const { stepStatistics, bestIndividual, bestFitness, avgFitness, generationNumber } = result;
+  const { stepStatistics, bestSpecimen, bestFitness, avgFitness, generationNumber } = result;
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title} data-help="Summary of the completed generation — best individual becomes the benchmark">Phase 4: Results</div>
+      <div style={styles.title} data-help="Summary of the completed generation — best specimen becomes the benchmark">Phase 4: Results</div>
       <div style={styles.subtitle} data-help="All breeding is done — the population has been replaced with the new children">Generation {generationNumber} Complete</div>
 
       <div style={styles.explanation}>
@@ -39,14 +39,14 @@ export const ResultsPhase: React.FC<Props> = ({ result }) => {
         </div>
       </div>
 
-      <div style={styles.bestLabel} data-help="The chromosome with the highest fitness this generation">Best individual</div>
+      <div style={styles.bestLabel} data-help="The chromosome with the highest fitness this generation">Best specimen</div>
       <div style={styles.bestRow} data-help="Each number is the row position of a queen in that column — fitness is the count of non-attacking pairs">
         <span style={styles.bestSolution}>
-          {bestIndividual.solution.map((gene, i) => (
+          {bestSpecimen.solution.map((gene, i) => (
             <span key={i} style={styles.gene}>{gene}</span>
           ))}
         </span>
-        <span style={styles.bestFitness}>f:{bestIndividual.fitness}</span>
+        <span style={styles.bestFitness}>f:{bestSpecimen.fitness}</span>
       </div>
 
       {result.solved && (

@@ -26,25 +26,25 @@ export const SelectionPhase: React.FC<Props> = ({ result }) => {
   return (
     <div style={styles.panel}>
       <div style={styles.title} data-help="The algorithm picks parents from the population using fitness-proportionate selection" data-help-glossary="selection">Phase 1: Selection</div>
-      <div style={styles.subtitle} data-help="Individuals with higher fitness get more 'slots' on the wheel and are more likely to be chosen">Fitness-Proportionate (Roulette Wheel) Selection</div>
+      <div style={styles.subtitle} data-help="Specimens with higher fitness get more 'slots' on the wheel and are more likely to be chosen">Fitness-Proportionate (Roulette Wheel) Selection</div>
 
       <div style={styles.explanation}>
-        Each individual's chance of being selected as a parent is proportional to its fitness.
+        Each specimen's chance of being selected as a parent is proportional to its fitness.
         Higher fitness = more slots on the roulette wheel = more likely to reproduce.
       </div>
 
       <div style={styles.statsRow}>
-        <div style={styles.stat} data-help="Individuals with fitness above zero that are candidates for selection">
+        <div style={styles.stat} data-help="Specimens with fitness above zero that are candidates for selection">
           <span style={styles.statLabel}>Eligible</span>
           <span style={styles.statValue}>{hasData ? eligible.toLocaleString() : dash}</span>
           <span style={styles.statDetail}>{hasData ? `avg fitness ${avgEligible.toFixed(1)}` : '\u00A0'}</span>
         </div>
-        <div style={styles.stat} data-help="Parents actually chosen — higher fitness individuals appear more often">
+        <div style={styles.stat} data-help="Parents actually chosen — higher fitness specimens appear more often">
           <span style={styles.statLabel}>Selected</span>
           <span style={styles.statValue}>{hasData ? actual.toLocaleString() : dash}</span>
           <span style={styles.statDetail}>{hasData ? `avg fitness ${avgActual.toFixed(1)}` : '\u00A0'}</span>
         </div>
-        <div style={styles.stat} data-help="Difference in avg fitness between selected and eligible — positive means selection favors fitter individuals" data-help-glossary="selection">
+        <div style={styles.stat} data-help="Difference in avg fitness between selected and eligible — positive means selection favors fitter specimens" data-help-glossary="selection">
           <span style={styles.statLabel}>Selection Pressure</span>
           <span style={styles.statValue}>
             {hasData ? (
@@ -56,7 +56,7 @@ export const SelectionPhase: React.FC<Props> = ({ result }) => {
       </div>
 
       {/* Fitness distribution bar chart */}
-      <div style={styles.chartLabel} data-help="How many individuals exist at each fitness level — shows population diversity">Fitness Distribution (eligible parents)</div>
+      <div style={styles.chartLabel} data-help="How many specimens exist at each fitness level — shows population diversity">Fitness Distribution (eligible parents)</div>
       <div style={styles.chart}>
         {hasData ? fitnessBuckets.map((count, fitness) => {
           if (count === 0 && fitness < 10) return null;

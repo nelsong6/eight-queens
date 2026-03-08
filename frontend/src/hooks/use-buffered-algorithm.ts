@@ -4,7 +4,7 @@ import type {
   CumulativeStatistics,
   GenerationResult,
   GenerationSummary,
-  Individual,
+  Specimen,
 } from '../engine/types';
 import { AlgorithmRunner } from '../engine/algorithm-runner';
 import { GenerationBuffer, type BufferEntry } from '../engine/generation-buffer';
@@ -34,9 +34,9 @@ export function useBufferedAlgorithm() {
   const [generation, setGeneration] = useState(0);
   const [bestFitness, setBestFitness] = useState(0);
   const [avgFitness, setAvgFitness] = useState(0);
-  const [bestIndividual, setBestIndividual] = useState<Individual | null>(null);
+  const [bestSpecimen, setBestSpecimen] = useState<Specimen | null>(null);
   const [solved, setSolved] = useState(false);
-  const [solutionIndividual, setSolutionIndividual] = useState<Individual | null>(null);
+  const [solutionSpecimen, setSolutionSpecimen] = useState<Specimen | null>(null);
   const [generationSummaries, setGenerationSummaries] = useState<GenerationSummary[]>([]);
   const [lastResult, setLastResult] = useState<GenerationResult | null>(null);
   const [algorithmConfig, setAlgorithmConfig] = useState<AlgorithmConfig | null>(null);
@@ -48,13 +48,13 @@ export function useBufferedAlgorithm() {
     setGeneration(result.generationNumber);
     setBestFitness(result.bestFitness);
     setAvgFitness(result.avgFitness);
-    setBestIndividual(result.bestIndividual);
+    setBestSpecimen(result.bestSpecimen);
     setSolved(result.solved);
     setLastResult(result);
     setCumulativeStats({ ...stats });
 
-    if (result.solved && result.solutionIndividual) {
-      setSolutionIndividual(result.solutionIndividual);
+    if (result.solved && result.solutionSpecimen) {
+      setSolutionSpecimen(result.solutionSpecimen);
     }
   }, []);
 
@@ -118,9 +118,9 @@ export function useBufferedAlgorithm() {
     setGeneration(0);
     setBestFitness(initialResult.bestFitness);
     setAvgFitness(initialResult.avgFitness);
-    setBestIndividual(initialResult.bestIndividual);
+    setBestSpecimen(initialResult.bestSpecimen);
     setSolved(false);
-    setSolutionIndividual(null);
+    setSolutionSpecimen(null);
     setGenerationSummaries([]);
     setLastResult(initialResult);
     setAlgorithmConfig(config);
@@ -431,7 +431,7 @@ export function useBufferedAlgorithm() {
     const initialResult = buffer.getInitialResult();
     setBestFitness(initialResult.bestFitness);
     setAvgFitness(initialResult.avgFitness);
-    setBestIndividual(initialResult.bestIndividual);
+    setBestSpecimen(initialResult.bestSpecimen);
     setLastResult(initialResult);
   }, []);
 
@@ -452,9 +452,9 @@ export function useBufferedAlgorithm() {
     setGeneration(0);
     setBestFitness(0);
     setAvgFitness(0);
-    setBestIndividual(null);
+    setBestSpecimen(null);
     setSolved(false);
-    setSolutionIndividual(null);
+    setSolutionSpecimen(null);
     setGenerationSummaries([]);
     setLastResult(null);
     setAlgorithmConfig(null);
@@ -493,9 +493,9 @@ export function useBufferedAlgorithm() {
     generation,
     bestFitness,
     avgFitness,
-    bestIndividual,
+    bestSpecimen,
     solved,
-    solutionIndividual,
+    solutionSpecimen,
     generationSummaries,
     lastResult,
     algorithmConfig,

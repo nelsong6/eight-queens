@@ -18,10 +18,12 @@ interface BreadcrumbTrailProps {
   browsePairIndex: number | null;
   zoomedPanel: string | null;
   breedingCategory: string;
+  showSpecimen: boolean;
   onTabChange: (tab: ActiveTab) => void;
   onSetGranularity: (g: 'full' | 'micro') => void;
   onClearWalkthrough: () => void;
   onClearZoom: () => void;
+  onClearSpecimen: () => void;
 }
 
 const PANEL_LABELS: Record<string, string> = {
@@ -40,10 +42,12 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
   browsePairIndex,
   zoomedPanel,
   breedingCategory,
+  showSpecimen,
   onTabChange,
   onSetGranularity,
   onClearWalkthrough,
   onClearZoom,
+  onClearSpecimen,
 }) => {
   const segments = useMemo((): BreadcrumbSegment[] => {
     const result: BreadcrumbSegment[] = [];
@@ -110,25 +114,30 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
       result.push({
         label: 'Granular Step',
         onClick: microHasDeeper ? () => { onClearWalkthrough(); onClearZoom(); } : null,
-        helpText: 'Granular step mode: stepping through individual algorithm phases',
+        helpText: 'Granular step mode: stepping through each algorithm phase',
       });
 
-      // Layer 3: Walkthrough phase (walkthroughPhase = operation * 3 + boundary)
+      // Layer 3: Walkthrough phase (walkthroughPhase = operation * 2 + boundary)
       if (hasWalkthrough) {
         const operation = Math.floor(walkthroughPhase! / SCREENS_PER_OP);
-        const boundary = walkthroughPhase! % SCREENS_PER_OP as 0 | 1 | 2;
+        const boundary = walkthroughPhase! % SCREENS_PER_OP as 0 | 1;
         const op = getOp(operation);
-        const boundaryLabel = boundary === 0 ? 'Before' : boundary === 1 ? 'Transform' : 'After';
+        const boundaryLabel = boundary === 0 ? 'Before' : 'After';
         const screenIndex = walkthroughPhase! + 1;
         const totalScreens = SCREENS_PER_GENERATION;
         result.push({
-          label: `${op.category} — ${op.name} (${boundaryLabel})`,
+          label: `${op.category} — ${op.name}`,
+          onClick: hasZoom ? () => { onClearZoom(); } : null,
+          helpText: `${op.name} [${op.type}]`,
+        });
+        result.push({
+          label: boundaryLabel,
           onClick: hasZoom ? () => { onClearZoom(); } : null,
           helpText: `Step ${screenIndex}/${totalScreens}: ${boundaryLabel} ${op.name} [${op.type}]`,
         });
 
         // Layer 4: Pair indicator (crossover generate chromosomes, after)
-        if (operation === 4 && boundary === 2 && browsePairIndex !== null) {
+        if (operation === 4 && boundary === 1 && browsePairIndex !== null) {
           result.push({
             label: `Pair #${browsePairIndex + 1}`,
             onClick: null,
@@ -157,9 +166,23 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
       }
     }
 
+    // Specimen layer: append when specimen inspector is open in micro mode
+    if (showSpecimen && isMicro) {
+      // Make the last segment clickable to close the specimen view
+      const last = result[result.length - 1];
+      if (last && !last.onClick) {
+        last.onClick = onClearSpecimen;
+      }
+      result.push({
+        label: 'Specimen',
+        onClick: null,
+        helpText: 'Inspecting selected specimen',
+      });
+    }
+
     return result;
   }, [sessionPhase, activeTab, walkthroughPhase, browsePairIndex, zoomedPanel, breedingCategory,
-      onTabChange, onSetGranularity, onClearWalkthrough, onClearZoom]);
+      showSpecimen, onTabChange, onSetGranularity, onClearWalkthrough, onClearZoom, onClearSpecimen]);
 
   return (
     <div style={styles.bar} data-help="Navigation breadcrumb — click any segment to return to that level">

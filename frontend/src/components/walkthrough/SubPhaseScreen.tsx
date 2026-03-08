@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import type { Individual, Age, GenerationResult, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
+import type { Specimen, Age, GenerationResult, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
 import { getOp, poolDisplayName, getPipelineState, resolvePoolFromPipeline, getPoolsAtCoordinate } from '../../engine/time-coordinate';
 import { type SortingState, type ColumnFiltersState } from '@tanstack/react-table';
-import { IndividualList, TransformView } from './IndividualList';
+import { SpecimenList } from './SpecimenList';
 import { colors } from '../../colors';
 
 interface Props {
   coordinate: TimeCoordinate;
   result: GenerationResult;
-  onSelectIndividual: (individual: Individual, origin: PoolOrigin) => void;
+  onSelectSpecimen: (specimen: Specimen, origin: PoolOrigin) => void;
   /** For crossover pair browsing (op 4) */
   browsePairIndex: number;
   onPairChange: (index: number) => void;
@@ -19,7 +19,7 @@ type PoolFilter = PoolName | 'all' | 'removed' | 'survived';
 export const SubPhaseScreen: React.FC<Props> = ({
   coordinate,
   result,
-  onSelectIndividual,
+  onSelectSpecimen,
   browsePairIndex,
   onPairChange,
 }) => {
@@ -32,7 +32,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
   const poolData = useMemo(() => {
     return pools.map(poolName => ({
       name: poolName,
-      individuals: resolvePoolFromPipeline(poolName, result.pipeline, coordinate.operation, coordinate.boundary),
+      specimens: resolvePoolFromPipeline(poolName, result.pipeline, coordinate.operation, coordinate.boundary),
     }));
   }, [pools, result, coordinate]);
 
@@ -45,11 +45,11 @@ export const SubPhaseScreen: React.FC<Props> = ({
     setColumnFilters([]);
   }
 
-  const allIndividuals = useMemo(() => {
+  const allSpecimens = useMemo(() => {
     const seen = new Set<number>();
-    const all: Individual[] = [];
-    for (const { individuals } of poolData) {
-      for (const ind of individuals) {
+    const all: Specimen[] = [];
+    for (const { specimens } of poolData) {
+      for (const ind of specimens) {
         if (!seen.has(ind.id)) {
           seen.add(ind.id);
           all.push(ind);
@@ -61,13 +61,13 @@ export const SubPhaseScreen: React.FC<Props> = ({
 
   // Compute removed/survived by comparing before vs after pools
   const { removedIds, survivedIds, hasTransformDiff, removedCount, survivedCount } = useMemo(() => {
-    const collectIds = (boundary: 0 | 1 | 2) => {
+    const collectIds = (boundary: 0 | 1) => {
       const snap = getPipelineState(result.pipeline, coordinate.operation, boundary);
       return new Set(snap.map(ind => ind.id));
     };
 
     const beforeIds = collectIds(0);
-    const afterIds = collectIds(2);
+    const afterIds = collectIds(1);
 
     const removed = new Set<number>();
     const survived = new Set<number>();
@@ -85,51 +85,51 @@ export const SubPhaseScreen: React.FC<Props> = ({
     };
   }, [coordinate, result]);
 
-  const displayedIndividuals = useMemo(() => {
-    if (poolFilter === 'all') return allIndividuals;
-    if (poolFilter === 'removed') return allIndividuals.filter(ind => removedIds.has(ind.id));
-    if (poolFilter === 'survived') return allIndividuals.filter(ind => survivedIds.has(ind.id));
+  const displayedSpecimens = useMemo(() => {
+    if (poolFilter === 'all') return allSpecimens;
+    if (poolFilter === 'removed') return allSpecimens.filter(ind => removedIds.has(ind.id));
+    if (poolFilter === 'survived') return allSpecimens.filter(ind => survivedIds.has(ind.id));
     const pool = poolData.find(p => p.name === poolFilter);
-    return pool ? pool.individuals : allIndividuals;
-  }, [poolFilter, allIndividuals, poolData, removedIds, survivedIds]);
+    return pool ? pool.specimens : allSpecimens;
+  }, [poolFilter, allSpecimens, poolData, removedIds, survivedIds]);
 
   const ageFacets = useMemo(() => {
     const counts = new Map<Age, number>();
-    for (const ind of displayedIndividuals) {
+    for (const ind of displayedSpecimens) {
       counts.set(ind.age, (counts.get(ind.age) ?? 0) + 1);
     }
     return counts;
-  }, [displayedIndividuals]);
+  }, [displayedSpecimens]);
 
-  const handleClick = (ind: Individual) => {
+  const handleClick = (ind: Specimen) => {
     let pool: PoolName = pools[0] ?? 'eligibleAdults';
     if (poolFilter !== 'all' && poolFilter !== 'removed' && poolFilter !== 'survived') {
       pool = poolFilter;
     }
-    onSelectIndividual(ind, { coordinate, pool });
+    onSelectSpecimen(ind, { coordinate, pool });
   };
 
   const poolChips = useMemo(() => {
     const chips: { value: PoolFilter; label: string }[] = [];
     if (pools.length > 1) {
-      chips.push({ value: 'all', label: `All (${allIndividuals.length})` });
+      chips.push({ value: 'all', label: `All (${allSpecimens.length})` });
     }
-    for (const { name, individuals } of poolData) {
-      chips.push({ value: name, label: `${poolDisplayName({ coordinate, pool: name })} (${individuals.length})` });
+    for (const { name, specimens } of poolData) {
+      chips.push({ value: name, label: `${poolDisplayName({ coordinate, pool: name })} (${specimens.length})` });
     }
     if (hasTransformDiff) {
       chips.push({ value: 'removed', label: `Removed (${removedCount})` });
       chips.push({ value: 'survived', label: `Survived (${survivedCount})` });
     }
     return chips;
-  }, [pools, poolData, coordinate, allIndividuals, hasTransformDiff, removedCount, survivedCount]);
+  }, [pools, poolData, coordinate, allSpecimens, hasTransformDiff, removedCount, survivedCount]);
 
   const activeAgeFilter = columnFilters.find(f => f.id === 'age')?.value as Age | undefined;
 
-  const isCrossoverAdd = coordinate.operation === 4 && coordinate.boundary === 2;
+  const isCrossoverAdd = coordinate.operation === 4 && coordinate.boundary === 1;
   const totalPairs = result.breedingData.aParents.length;
-  const showLists = coordinate.boundary !== 1;
-  const hasNoData = pools.length === 0 || (displayedIndividuals.length === 0 && poolData.every(p => p.individuals.length === 0));
+  const showLists = true;
+  const hasNoData = pools.length === 0 || (displayedSpecimens.length === 0 && poolData.every(p => p.specimens.length === 0));
 
   return (
     <div style={styles.panel}>
@@ -139,74 +139,67 @@ export const SubPhaseScreen: React.FC<Props> = ({
         <span style={styles.opCategory}>{op.category}</span>
       </div>
 
-      {coordinate.boundary === 1 && <TransformView coordinate={coordinate} result={result} />}
 
-      {/* Pool & age filter dropdowns */}
+      {/* Pool & age filter dropdowns — always reserve space */}
       {showLists && (
         <div style={styles.filterRow}>
-          {poolChips.length > 1 && (
-            <select
-              data-help="Filter by pool"
-              value={poolFilter}
-              onChange={e => { setPoolFilter(e.target.value as PoolFilter); setColumnFilters([]); }}
-              style={styles.filterSelect}
-            >
-              {poolChips.map(chip => (
-                <option key={chip.value} value={chip.value}>{chip.label}</option>
-              ))}
-            </select>
-          )}
-          {ageFacets.size > 0 && (
-            <select
-              data-help="Filter by age"
-              value={activeAgeFilter ?? ''}
-              onChange={e => {
-                const val = e.target.value;
-                if (val === '') {
-                  setColumnFilters(prev => prev.filter(f => f.id !== 'age'));
-                } else {
-                  setColumnFilters(prev => [...prev.filter(f => f.id !== 'age'), { id: 'age', value: Number(val) }]);
-                }
-              }}
-              style={styles.filterSelect}
-            >
-              <option value="">All ages</option>
-              {([0, 1, 2, 3] as Age[]).filter(age => ageFacets.has(age)).map(age => (
-                <option key={age} value={age}>Age {age} ({ageFacets.get(age)})</option>
-              ))}
-            </select>
-          )}
+          <select
+            data-help="Filter by pool"
+            value={poolFilter}
+            onChange={e => { setPoolFilter(e.target.value as PoolFilter); setColumnFilters([]); }}
+            style={{ ...styles.filterSelect, visibility: poolChips.length > 1 ? 'visible' : 'hidden' }}
+          >
+            {poolChips.map(chip => (
+              <option key={chip.value} value={chip.value}>{chip.label}</option>
+            ))}
+          </select>
+          <select
+            data-help="Filter by age"
+            value={activeAgeFilter ?? ''}
+            onChange={e => {
+              const val = e.target.value;
+              if (val === '') {
+                setColumnFilters(prev => prev.filter(f => f.id !== 'age'));
+              } else {
+                setColumnFilters(prev => [...prev.filter(f => f.id !== 'age'), { id: 'age', value: Number(val) }]);
+              }
+            }}
+            style={{ ...styles.filterSelect, visibility: ageFacets.size > 0 ? 'visible' : 'hidden' }}
+          >
+            <option value="">All ages</option>
+            {([0, 1, 2, 3] as Age[]).filter(age => ageFacets.has(age)).map(age => (
+              <option key={age} value={age}>Age {age} ({ageFacets.get(age)})</option>
+            ))}
+          </select>
         </div>
       )}
 
-      {/* Crossover pair browser */}
-      {isCrossoverAdd && totalPairs > 0 && (
-        <div style={styles.pairNav}>
-          <button
-            onClick={() => onPairChange(Math.max(0, browsePairIndex - 1))}
-            disabled={browsePairIndex === 0}
-            style={{ ...styles.navBtn, opacity: browsePairIndex === 0 ? 0.3 : 1 }}
-          >
-            Prev
-          </button>
-          <span style={styles.pairLabel}>
-            Pair {browsePairIndex + 1} of {totalPairs.toLocaleString()}
-          </span>
-          <button
-            onClick={() => onPairChange(Math.min(totalPairs - 1, browsePairIndex + 1))}
-            disabled={browsePairIndex >= totalPairs - 1}
-            style={{ ...styles.navBtn, opacity: browsePairIndex >= totalPairs - 1 ? 0.3 : 1 }}
-          >
-            Next
-          </button>
-        </div>
-      )}
+      {/* Crossover pair browser — always reserve space */}
+      <div style={{ ...styles.pairNav, visibility: isCrossoverAdd && totalPairs > 0 ? 'visible' : 'hidden' }}>
+        <button
+          onClick={() => onPairChange(Math.max(0, browsePairIndex - 1))}
+          disabled={browsePairIndex === 0}
+          style={{ ...styles.navBtn, opacity: browsePairIndex === 0 ? 0.3 : 1 }}
+        >
+          Prev
+        </button>
+        <span style={styles.pairLabel}>
+          Pair {browsePairIndex + 1} of {totalPairs.toLocaleString()}
+        </span>
+        <button
+          onClick={() => onPairChange(Math.min(totalPairs - 1, browsePairIndex + 1))}
+          disabled={browsePairIndex >= totalPairs - 1}
+          style={{ ...styles.navBtn, opacity: browsePairIndex >= totalPairs - 1 ? 0.3 : 1 }}
+        >
+          Next
+        </button>
+      </div>
 
-      {/* Individual list */}
-      {showLists && displayedIndividuals.length > 0 && (
+      {/* Specimen list */}
+      {showLists && displayedSpecimens.length > 0 && (
         <div style={styles.poolSection}>
-          <IndividualList
-            individuals={displayedIndividuals}
+          <SpecimenList
+            specimens={displayedSpecimens}
             onClickItem={handleClick}
             sorting={sorting}
             onSortingChange={setSorting}
@@ -216,8 +209,8 @@ export const SubPhaseScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {showLists && displayedIndividuals.length === 0 && !hasNoData && (
-        <div style={styles.emptyPool}>No individuals match the current filter</div>
+      {showLists && displayedSpecimens.length === 0 && !hasNoData && (
+        <div style={styles.emptyPool}>No specimens match the current filter</div>
       )}
 
       {showLists && hasNoData && (

@@ -73,7 +73,7 @@ export const colors = {
     birth: '#30c8b0',
   },
 
-  // ── Semantic: individual age lifecycle ──
+  // ── Semantic: specimen age lifecycle ──
   age: {
     chromosome: '#a0a0be',  // age 0
     child: '#6bb8f0',       // age 1
