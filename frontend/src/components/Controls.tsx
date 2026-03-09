@@ -10,6 +10,7 @@ interface Props {
   onPause: () => void;
   onStep: () => void;
   onStepN: (count: number) => void;
+  onMicroStepN?: (count: number) => void;
   onBack: () => void;
   canGoBack: boolean;
   onReset: () => void;
@@ -31,6 +32,7 @@ export const Controls: React.FC<Props> = ({
   onPause,
   onStep,
   onStepN,
+  onMicroStepN,
   onBack,
   canGoBack,
   onReset,
@@ -87,7 +89,7 @@ export const Controls: React.FC<Props> = ({
       <div style={styles.divider} />
 
       {/* Step controls — split button */}
-      <div style={styles.splitGroup} data-help={isMicro ? 'Advance to the next pipeline step (before/after each operation)' : 'Advance by N generations — pick a preset or type a custom number'}>
+      <div style={styles.splitGroup} data-help={isMicro ? 'Advance by N pipeline steps — pick a preset or type a custom number' : 'Advance by N generations — pick a preset or type a custom number'}>
         <input
           list="step-presets"
           value={stepCount}
@@ -102,7 +104,12 @@ export const Controls: React.FC<Props> = ({
         </datalist>
         <button
           onClick={() => {
-            if (isMicro) { onStep(); return; }
+            if (isMicro) {
+              const n = parseInt(stepCount, 10);
+              if (n === 1 || !onMicroStepN) onStep();
+              else if (n > 1) onMicroStepN(n);
+              return;
+            }
             const n = parseInt(stepCount, 10);
             if (n === 1) onStep();
             else if (n > 1) onStepN(n);

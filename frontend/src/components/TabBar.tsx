@@ -70,10 +70,10 @@ export const TabBar: React.FC<Props> = ({ activeTab, onTabChange, sessionPhase }
               data-help={tab.helpText}
               style={{
                 ...styles.tab,
-                color: isActive ? colors.text.primary : colors.text.tertiary,
+                '--tab-color': isActive ? colors.text.primary : colors.text.tertiary,
                 fontWeight: isActive ? 'bold' : 'normal' as const,
                 cursor: isDisabled ? 'not-allowed' : 'pointer',
-              }}
+              } as React.CSSProperties}
             >
               {tab.label}
             </button>
@@ -103,6 +103,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '1px 0 1px 1px',
     position: 'relative' as const,
     marginBottom: -1,
+    zIndex: 0,
   },
   wrapperActive: {
     padding: 0,
@@ -127,7 +128,6 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     display: 'block' as const,
     whiteSpace: 'nowrap' as const,
-    transition: 'color 0.12s',
     letterSpacing: 0.3,
     textAlign: 'left' as const,
   },

@@ -114,7 +114,7 @@ export const SpecimenPanel: React.FC<Props> = ({
       <Field label="ID" help="Unique ID of this specimen within the population">
         {specimen ? <span style={styles.id}>#{formatId(specimen)}</span> : na}
       </Field>
-      <Field label="Sample collection date" help="The pipeline position where this specimen was clicked — format: x.y.t (generation.operation.phase)">
+      <Field label="Sample collection date" help="The pipeline position where this specimen was clicked — format: x.y (generation.operation)">
         {viewedOrigin ? (
           <span style={styles.val}>
             <span style={styles.coordinate}>{formatCoordinate(viewedOrigin.coordinate)}</span>
@@ -127,18 +127,17 @@ export const SpecimenPanel: React.FC<Props> = ({
       <Field label="Fitness" help="Number of non-attacking queen pairs (max 28 = solved)">
         {specimen ? <span style={styles.fitness}>{specimen.fitness}/28</span> : na}
       </Field>
-      <Field label="Born" help="The time coordinate at which this specimen was created — format: x.y.t (generation.operation.phase)">
+      <Field label="Born" help="The time coordinate at which this specimen was created — format: x.y (generation.operation)">
         {specimen
           ? <span style={styles.val}>
               <span style={styles.coordinate}>{formatCoordinate({
                 generation: specimen.bornGeneration ?? 0,
                 operation: 5,
-                boundary: 1,
               })}</span>
             </span>
           : na}
       </Field>
-      <Field label="Age" help="This specimen's age value: 0 = chromosome, 1 = child, 2 = adult, 3 = elder">
+      <Field label="Age" help="This specimen's age value: 0 = chromosome, 1 = child, 2 = adult, 3 = elder" helpGlossary="age-lifecycle">
         {specimen ? (
           <span style={styles.val}>
             {specimen.age}
@@ -163,8 +162,8 @@ export const SpecimenPanel: React.FC<Props> = ({
       <Field label="Parents" help="The two parents used in the crossover that produced this child - click to inspect">
         {info?.parentA || info?.parentB ? (
           <span style={{ display: 'flex', gap: 6 }}>
-            {info?.parentA && <ClickableSpecimen ind={info.parentA} color={colors.parent.a} onClick={() => onSelectSpecimen(info.parentA!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'A' })} />}
-            {info?.parentB && <ClickableSpecimen ind={info.parentB} color={colors.parent.b} onClick={() => onSelectSpecimen(info.parentB!, { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'B' })} />}
+            {info?.parentA && <ClickableSpecimen ind={info.parentA} color={colors.parent.a} onClick={() => onSelectSpecimen(info.parentA!, { coordinate: { generation, operation: 2 }, pool: 'selectedPairs', qualifier: 'A' })} />}
+            {info?.parentB && <ClickableSpecimen ind={info.parentB} color={colors.parent.b} onClick={() => onSelectSpecimen(info.parentB!, { coordinate: { generation, operation: 2 }, pool: 'selectedPairs', qualifier: 'B' })} />}
           </span>
         ) : na}
       </Field>
@@ -175,7 +174,7 @@ export const SpecimenPanel: React.FC<Props> = ({
       </Field>
       <Field label="Sibling" help="The other child produced from the same crossover - click to inspect">
         {info?.sibling ? (
-          <ClickableSpecimen ind={info.sibling} color={colors.accent.green} onClick={() => onSelectSpecimen(info.sibling!, { coordinate: { generation, operation: 7, boundary: 1 }, pool: 'finalChildren' })} />
+          <ClickableSpecimen ind={info.sibling} color={colors.accent.green} onClick={() => onSelectSpecimen(info.sibling!, { coordinate: { generation, operation: 5 }, pool: 'finalChildren' })} />
         ) : na}
       </Field>
       <Field label="Mating" help="How many times this specimen was selected as a parent — browse each mating event">
@@ -203,7 +202,7 @@ export const SpecimenPanel: React.FC<Props> = ({
             value=""
             onChange={(e) => {
               const child = e.target.value === 'a' ? selectedMating.childA : selectedMating.childB;
-              onSelectSpecimen(child, { coordinate: { generation, operation: 7, boundary: 1 }, pool: 'finalChildren' });
+              onSelectSpecimen(child, { coordinate: { generation, operation: 5 }, pool: 'finalChildren' });
               e.target.value = '';
             }}
           >
@@ -220,9 +219,10 @@ export const SpecimenPanel: React.FC<Props> = ({
 const Field: React.FC<{
   label: string;
   help?: string;
+  helpGlossary?: string;
   children: React.ReactNode;
-}> = ({ label, help, children }) => (
-  <div style={styles.field} data-help={help}>
+}> = ({ label, help, helpGlossary, children }) => (
+  <div style={styles.field} data-help={help} data-help-glossary={helpGlossary}>
     <span style={styles.fieldLabel}>{label}</span>
     <span style={styles.fieldValue}>{children}</span>
   </div>

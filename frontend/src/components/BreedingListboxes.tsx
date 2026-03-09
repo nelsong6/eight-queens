@@ -913,11 +913,11 @@ export type CategoryKey = 'Eligible parents' | 'Actual parents' | 'Children' | '
 function sourceToOrigin(source: string, activeCategory: CategoryKey, generation: number): PoolOrigin {
   switch (source) {
     case 'Parent A':
-      return { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'A' };
+      return { coordinate: { generation, operation: 2 }, pool: 'selectedPairs', qualifier: 'A' };
     case 'Parent B':
-      return { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs', qualifier: 'B' };
+      return { coordinate: { generation, operation: 2 }, pool: 'selectedPairs', qualifier: 'B' };
     case 'Partner':
-      return { coordinate: { generation, operation: 2, boundary: 1 }, pool: 'selectedPairs' };
+      return { coordinate: { generation, operation: 2 }, pool: 'selectedPairs' };
     default:
       return categoryToOrigin(activeCategory, generation);
   }

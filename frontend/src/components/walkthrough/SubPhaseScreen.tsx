@@ -1,17 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import type { Specimen, Age, GenerationResult, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
-import { getOp, poolDisplayName, getPipelineState, resolvePoolFromPipeline, getPoolsAtCoordinate } from '../../engine/time-coordinate';
+import type { Specimen, Age, BreedingPair, GenerationResult, GenerationPipeline, PoolOrigin, PoolName, TimeCoordinate } from '../../engine/types';
+import { getOp, poolDisplayName, resolvePoolFromPipeline, getPoolsAtCoordinate, getPairsAtCoordinate } from '../../engine/time-coordinate';
 import { type SortingState, type ColumnFiltersState } from '@tanstack/react-table';
 import { SpecimenList } from './SpecimenList';
+import { PairList } from './PairList';
 import { colors } from '../../colors';
 
 interface Props {
   coordinate: TimeCoordinate;
   result: GenerationResult;
   onSelectSpecimen: (specimen: Specimen, origin: PoolOrigin) => void;
-  /** For crossover pair browsing (op 4) */
-  browsePairIndex: number;
-  onPairChange: (index: number) => void;
+  /** Highlight the row matching this specimen id */
+  selectedId?: number;
+  /** Previous generation's pipeline, for showing pairs at ops 0-1 */
+  previousPipeline?: GenerationPipeline;
+  onSelectPair?: (pair: BreedingPair) => void;
+  selectedPairIndex?: number;
 }
 
 type PoolFilter = PoolName | 'all' | 'removed' | 'survived';
@@ -20,8 +24,10 @@ export const SubPhaseScreen: React.FC<Props> = ({
   coordinate,
   result,
   onSelectSpecimen,
-  browsePairIndex,
-  onPairChange,
+  selectedId,
+  previousPipeline,
+  onSelectPair,
+  selectedPairIndex,
 }) => {
   const op = getOp(coordinate.operation);
   const pools = getPoolsAtCoordinate(coordinate);
@@ -32,7 +38,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
   const poolData = useMemo(() => {
     return pools.map(poolName => ({
       name: poolName,
-      specimens: resolvePoolFromPipeline(poolName, result.pipeline, coordinate.operation, coordinate.boundary),
+      specimens: resolvePoolFromPipeline(poolName, result.pipeline, coordinate.operation),
     }));
   }, [pools, result, coordinate]);
 
@@ -59,15 +65,12 @@ export const SubPhaseScreen: React.FC<Props> = ({
     return all;
   }, [poolData]);
 
-  // Compute removed/survived by comparing before vs after pools
+  // Compute removed/survived by comparing before vs after pipeline slots
   const { removedIds, survivedIds, hasTransformDiff, removedCount, survivedCount } = useMemo(() => {
-    const collectIds = (boundary: 0 | 1) => {
-      const snap = getPipelineState(result.pipeline, coordinate.operation, boundary);
-      return new Set(snap.map(ind => ind.id));
-    };
-
-    const beforeIds = collectIds(0);
-    const afterIds = collectIds(1);
+    const beforeSnap = result.pipeline.ops[coordinate.operation]![0];
+    const afterSnap = result.pipeline.ops[coordinate.operation]![2];
+    const beforeIds = new Set(beforeSnap.map(ind => ind.id));
+    const afterIds = new Set(afterSnap.map(ind => ind.id));
 
     const removed = new Set<number>();
     const survived = new Set<number>();
@@ -126,8 +129,11 @@ export const SubPhaseScreen: React.FC<Props> = ({
 
   const activeAgeFilter = columnFilters.find(f => f.id === 'age')?.value as Age | undefined;
 
-  const isCrossoverAdd = coordinate.operation === 4 && coordinate.boundary === 1;
-  const totalPairs = result.breedingData.aParents.length;
+  const pairs = useMemo(() =>
+    getPairsAtCoordinate(result.pipeline, coordinate, previousPipeline),
+    [result.pipeline, coordinate, previousPipeline],
+  );
+
   const showLists = true;
   const hasNoData = pools.length === 0 || (displayedSpecimens.length === 0 && poolData.every(p => p.specimens.length === 0));
 
@@ -155,6 +161,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
           </select>
           <select
             data-help="Filter by age"
+            data-help-glossary="age-lifecycle"
             value={activeAgeFilter ?? ''}
             onChange={e => {
               const val = e.target.value;
@@ -174,27 +181,6 @@ export const SubPhaseScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Crossover pair browser — always reserve space */}
-      <div style={{ ...styles.pairNav, visibility: isCrossoverAdd && totalPairs > 0 ? 'visible' : 'hidden' }}>
-        <button
-          onClick={() => onPairChange(Math.max(0, browsePairIndex - 1))}
-          disabled={browsePairIndex === 0}
-          style={{ ...styles.navBtn, opacity: browsePairIndex === 0 ? 0.3 : 1 }}
-        >
-          Prev
-        </button>
-        <span style={styles.pairLabel}>
-          Pair {browsePairIndex + 1} of {totalPairs.toLocaleString()}
-        </span>
-        <button
-          onClick={() => onPairChange(Math.min(totalPairs - 1, browsePairIndex + 1))}
-          disabled={browsePairIndex >= totalPairs - 1}
-          style={{ ...styles.navBtn, opacity: browsePairIndex >= totalPairs - 1 ? 0.3 : 1 }}
-        >
-          Next
-        </button>
-      </div>
-
       {/* Specimen list */}
       {showLists && displayedSpecimens.length > 0 && (
         <div style={styles.poolSection}>
@@ -205,6 +191,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
             onSortingChange={setSorting}
             columnFilters={columnFilters}
             onColumnFiltersChange={setColumnFilters}
+            selectedId={selectedId}
           />
         </div>
       )}
@@ -216,6 +203,19 @@ export const SubPhaseScreen: React.FC<Props> = ({
       {showLists && hasNoData && (
         <div style={styles.noOp}>No population data at this coordinate.</div>
       )}
+
+      {/* Breeding Pairs — always shown */}
+      <div style={styles.pairSection}>
+        <h3 style={styles.panelTitle} data-help="Breeding pairs formed by roulette wheel selection. Pairs follow their specimens — pruned when parents are removed.">Breeding Pairs</h3>
+        <PairList
+          pairs={pairs}
+          coordinate={coordinate}
+          onSelectSpecimen={onSelectSpecimen}
+          selectedId={selectedId}
+          onSelectPair={onSelectPair}
+          selectedPairIndex={selectedPairIndex}
+        />
+      </div>
     </div>
   );
 };
@@ -274,28 +274,6 @@ const styles: Record<string, React.CSSProperties> = {
     flex: '0 1 auto',
     minWidth: 0,
   },
-  pairNav: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  navBtn: {
-    padding: '3px 8px',
-    fontSize: 10,
-    fontFamily: 'monospace',
-    backgroundColor: colors.bg.overlay,
-    color: colors.text.primary,
-    border: `1px solid ${colors.border.strong}`,
-    borderRadius: 3,
-    cursor: 'pointer',
-  },
-  pairLabel: {
-    fontSize: 10,
-    fontFamily: 'monospace',
-    color: colors.text.secondary,
-  },
   poolSection: {
     marginBottom: 12,
   },
@@ -310,5 +288,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     textAlign: 'center' as const,
     padding: 20,
+  },
+  pairSection: {
+    marginTop: 16,
+    borderTop: `1px solid ${colors.border.subtle}`,
+    paddingTop: 12,
   },
 };

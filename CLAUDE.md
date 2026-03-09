@@ -32,8 +32,8 @@ Hook: `useBufferedAlgorithm` wires everything to React state. Manages undo/redo 
 
 Key engine files:
 
-- `types.ts` — all interfaces: `Specimen` (with `age: Age`), `Age` (0–3 lifecycle type), `AlgorithmConfig`, `GenerationResult`, `GenerationBreedingData`, `StepStatistics`, `CumulativeStatistics`, `GenerationSummary`, `MutationRecord`, plus time coordinate types: `OpType`, `OpCategory`, `OpDefinition`, `TimeCoordinate`, `PoolName`, `PoolOrigin`
-- `time-coordinate.ts` — `GENERATION_OPS` array (7 atomic operations), utility functions: `formatCoordinate`, `getOp`, `poolDisplayName`, `getPoolsAtCoordinate`, `categoryToOrigin`, `OPS_PER_GENERATION`
+- `types.ts` — all interfaces: `Specimen` (with `age: Age`), `Age` (0–3 lifecycle type), `AlgorithmConfig`, `GenerationResult`, `GenerationBreedingData`, `StepStatistics`, `CumulativeStatistics`, `GenerationSummary`, `MutationRecord`, `BreedingPair` (parentA/B, crossoverPoint, childA/B), `PipelineTransformData`, plus time coordinate types: `OpType`, `OpCategory`, `OpDefinition`, `TimeCoordinate`, `PoolName`, `PoolOrigin`
+- `time-coordinate.ts` — `GENERATION_OPS` array (6 atomic operations), utility functions: `formatCoordinate`, `getOp`, `poolDisplayName`, `getPoolsAtCoordinate`, `getPairsAtCoordinate`, `categoryToOrigin`, `OPS_PER_GENERATION`
 - `fitness.ts` — `assessFitness(solution[])`: counts attacking pairs, returns 28 - attacks
 - `specimen.ts` — `createRandomSpecimen`, `createSeededSpecimen` (deterministic from seed+id), `mutate`, `cloneSpecimen`
 
@@ -60,7 +60,7 @@ Key engine files:
 **Column 3: Breeding / Walkthrough**
 
 - `BreedingListboxes` — virtual-scroll lists for: Eligible parents, Actual parents, Children, Mutations; all sortable; Children view shows parent genomes color-coded by source; Mutations shows before/after diff; Actual parents has master/detail partner view; dropdown labels include time coordinates
-- Replaced by `SubPhaseScreen` in micro mode — unified walkthrough screen driven by `TimeCoordinate`, showing pools present at each operation boundary
+- Replaced by `SubPhaseScreen` in micro mode — unified walkthrough screen driven by `TimeCoordinate`, showing pools present at each completed operation
 
 **Column 4: Chart**
 
@@ -80,15 +80,14 @@ config → running → review
 
 ## Time Coordinate System
 
-Every specimen's position in the GA pipeline is tracked with a 3-element coordinate `x.y.t`:
+Every specimen's position in the GA pipeline is tracked with a 2-element coordinate `x.y`:
 
 - `x` = generation number
-- `y` = atomic operation index (0–6)
-- `t` = boundary/phase: `0` (before), `t` (transform process, not a point in time), `1` (after) — internal array index is 0, 1, 2
+- `y` = atomic operation index (0–5)
 
-7 operations × 3 phases = 21 screens per generation in micro mode. The transform screen (t) visualizes what the operation does — showing input/output pool flow, operation type badge, specimen count delta, and a detailed description of the mechanism.
+Time implies the step is complete — each coordinate shows the finished state of that operation. 6 operations = 6 screens per generation in micro mode.
 
-Gen 0 is the synthetic seed — micro mode starts at `0.6.1` (the seed's connecting point, showing the completed initial population). The first real algorithm step begins at `1.0.0`.
+Gen 0 is the synthetic seed — micro mode starts at `0.5` (the seed's connecting point, showing the completed initial population). The first real algorithm step begins at `1.0`.
 
 ### Atomic Operations (y-axis)
 
@@ -97,18 +96,37 @@ Gen 0 is the synthetic seed — micro mode starts at `0.6.1` (the seed's connect
 | 0   | Age specimens           | transform | Aging      |
 | 1   | Remove elders           | remove    | Pruning    |
 | 2   | Select breeding pairs   | transform | Selection  |
-| 3   | Mark pairs as mated     | transform | Crossover  |
-| 4   | Generate chromosomes    | add       | Crossover  |
-| 5   | Apply mutations         | transform | Mutation   |
-| 6   | Realize children        | transform | Birth      |
+| 3   | Generate chromosomes    | add       | Crossover  |
+| 4   | Apply mutations         | transform | Mutation   |
+| 5   | Realize children        | transform | Birth      |
 
-Unselected adults (those not chosen for breeding) persist alongside mated parents through the pipeline and are naturally removed through the aging process in the next generation.
+Unselected adults (those not chosen for breeding) persist alongside selected parents through the pipeline and are naturally removed through the aging process in the next generation.
+
+### Dual-Set Model: Specimens + Breeding Pairs
+
+The pipeline maintains two parallel sets visible on every granular step screen:
+
+1. **`Set<Specimen>`** — the primary population, always present
+2. **`Set<BreedingPair>`** — pairs formed by roulette wheel selection
+
+Pair lifecycle follows specimens — when a parent is pruned, its pairs are removed:
+
+| Op | Pairs state (completed) |
+|----|------------|
+| 0 (Age) | Previous gen's pairs persist (parents just aged) |
+| 1 (Remove elders) | Pairs pruned alongside elder parents → typically empty |
+| 2 (Select pairs) | New pairs created from roulette wheel selection |
+| 3 (Crossover) | Pairs annotated (crossoverPoint, children) |
+| 4-5 | Pairs persist from op 3 (children may be mutated/realized) |
+
+`BreedingPair` = `{ index, parentA, parentB, crossoverPoint?, childA?, childB? }`. Stored in `GenerationPipeline.transformData` (keyed by op 2-3). Accessed via `getPairsAtCoordinate()`.
 
 ### Key Types
 
-- `TimeCoordinate` — `{ generation, operation, boundary }` — precise pipeline position
+- `TimeCoordinate` — `{ generation, operation }` — precise pipeline position
 - `PoolOrigin` — `{ coordinate, pool, qualifier? }` — where a specimen was observed
-- `PoolName` — which named pool: `oldParents`, `previousChildren`, `eligibleAdults`, `retiredParents`, `selectedPairs`, `unselected`, `matedParents`, `chromosomes`, `finalChildren`
+- `PoolName` — which named pool: `oldParents`, `previousChildren`, `eligibleAdults`, `retiredParents`, `selectedPairs`, `unselected`, `chromosomes`, `finalChildren`
+- `BreedingPair` — `{ index, parentA, parentB, crossoverPoint?, childA?, childB? }` — a pair of specimens selected for crossover
 - `onSelectSpecimen(specimen, origin: PoolOrigin)` — all specimen selection passes structured origin, not free-form strings
 
 ### Synthetic Seed Parents (Gen 0)
@@ -117,17 +135,15 @@ Unselected adults (those not chosen for breeding) persist alongside mated parent
 
 ## Micro Mode / Walkthrough
 
-`WalkthroughState` tracks `{ operation, boundary, result, previousResult, browsePairIndex }`. Navigation advances boundary 0→1→2, then operation+1 boundary 0. After op 6 boundary 2, runs next generation starting at op 0 boundary 0. Back reverses; at op 0 boundary 0 goes back a full generation to op 6 boundary 2.
+`WalkthroughState` tracks `{ operation, result, previousResult, browsePairIndex }`. Navigation advances to the next operation. After op 5, runs next generation starting at op 0. Back reverses; at op 0 goes back a full generation to op 5.
 
-`SubPhaseScreen` renders three screen types per operation:
+Each operation shows the completed state. `SubPhaseScreen` renders one screen per operation showing the output pools with specimen lists and breeding pairs.
 
-- **Before (t=0)**: Shows input pools with specimen lists
-- **Transform (t=1)**: Visualizes the operation — input→output pool flow diagram, operation type badge, specimen count delta, and detailed mechanism description. Uses `getTransformDescription()` and `OP_POOL_TRANSITIONS` data.
-- **After (t=2)**: Shows output pools with specimen lists
+Uses `getPoolsAtCoordinate()` to determine which pools to display, and `resolvePoolFromPipeline()` to map pool names to actual specimens from `result`.
 
-Uses `getPoolsAtCoordinate()` to determine which pools to display, and `resolvePool()` to map pool names to actual specimens from `result` and `previousResult`.
+Both `SubPhaseScreen` and `OperationPanel` display two groups on every screen: a specimen list (via `SpecimenList`) and a breeding pair list (via `PairList`). The pair list shows pairs from `getPairsAtCoordinate()` and can be empty (e.g. after pruning at op 1).
 
-`BreadcrumbTrail` shows `Category — Operation name (Before/Transform/After)` with step counter. `Controls` shows `x/21` step indicator in micro mode.
+`BreadcrumbTrail` shows `Category — Operation name` with step counter. `Controls` shows `x/6` step indicator in micro mode.
 
 ## Presets (frontend/src/data/presets.ts)
 

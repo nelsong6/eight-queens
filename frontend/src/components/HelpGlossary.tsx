@@ -1,14 +1,13 @@
 import React from 'react';
 import { colors } from '../colors';
 
-export type HelpSectionId = 'problem' | 'algorithm' | 'pipeline' | 'lifecycle' | 'pools' | 'controls' | 'presets';
+export type HelpSectionId = 'problem' | 'algorithm' | 'pipeline' | 'lifecycle' | 'controls' | 'presets';
 
 export const HELP_SECTIONS: Array<{ id: HelpSectionId; label: string; helpText: string }> = [
   { id: 'problem',   label: '8-Queens',     helpText: 'The eight-queens puzzle and fitness scoring' },
   { id: 'algorithm', label: 'Algorithm',    helpText: 'Genetic algorithm concepts: chromosome, population, selection, crossover, mutation' },
-  { id: 'pipeline',  label: 'Pipeline Ops', helpText: 'The 7 atomic pipeline operations and the x.y.z coordinate system' },
+  { id: 'pipeline',  label: 'Pipeline Ops', helpText: 'The 6 atomic pipeline operations and the x.y.z coordinate system' },
   { id: 'lifecycle', label: 'Lifecycle',    helpText: 'Specimen age lifecycle: chromosome → child → adult → elder' },
-  { id: 'pools',     label: 'Pools',        helpText: 'Named population snapshots at each pipeline step' },
   { id: 'controls',  label: 'Controls',     helpText: 'How to use the tabs, playback controls, and specimen inspector' },
   { id: 'presets',   label: 'Presets',      helpText: 'Available configuration presets and their parameters' },
 ];
@@ -18,7 +17,6 @@ const SECTION_TITLES: Record<HelpSectionId, string> = {
   algorithm: 'Genetic Algorithm Overview',
   pipeline:  'Pipeline Operations',
   lifecycle: 'Specimen Age Lifecycle',
-  pools:     'Pools',
   controls:  'Using the Controls',
   presets:   'Configuration Presets',
 };
@@ -71,6 +69,7 @@ export const HelpGlossary: React.FC<Props> = ({ section }) => (
           <Term term="Fitness" id="glossary-fitness">Score from 0–28 counting non-attacking queen pairs. Higher = better. Target = 28.</Term>
           <Term term="Selection" id="glossary-selection">Fitness-proportionate roulette wheel: specimens with higher fitness are more likely to breed.</Term>
           <Term term="Crossover" id="glossary-crossover">Two parents exchange genetic material at a random cut point to produce two children.</Term>
+          <Term term="Breeding Pair" id="glossary-breeding-pair">Two specimens selected by the roulette wheel for crossover. Each pair produces exactly two children via single-point crossover. Pairs are created at op 2, annotated at op 3, and follow their parent specimens — when a parent is pruned, its pairs are removed.</Term>
           <Term term="Mutation" id="glossary-mutation">A child's random gene is replaced with a random value at a configured probability.</Term>
           <Term term="Generation" id="glossary-generation">One full cycle: age → prune → select → crossover → mutate → birth.</Term>
           <Term term="Epoch" id="glossary-epoch">The entire span of generations from start to solution — one complete run of the algorithm.</Term>
@@ -80,22 +79,21 @@ export const HelpGlossary: React.FC<Props> = ({ section }) => (
       {section === 'pipeline' && (
         <>
           <p style={styles.para}>
-            Each generation runs 7 atomic operations. Your position in the pipeline is tracked
-            as a coordinate <code style={styles.code}>x.y.z</code>: generation · operation · phase.
+            Each generation runs 6 atomic operations. Your position in the pipeline is tracked
+            as a coordinate <code style={styles.code}>x.y</code>: generation · operation.
           </p>
           <p style={styles.para}>
-            Phase <code style={styles.code}>z</code> is 0 (before), t (transform), or 1 (after).
-            This gives 21 addressable steps per generation.
+            Each step shows the completed state of that operation.
+            This gives 6 steps per generation.
           </p>
           <div style={styles.opTable}>
             {[
               { y: 0, name: 'Age specimens',          cat: 'Aging',     desc: 'All specimens advance one age step: chromosomes become children, children become adults, adults become elders.' },
               { y: 1, name: 'Remove elders',          cat: 'Pruning',   desc: 'Elders (age 3) are removed from the population.' },
               { y: 2, name: 'Select breeding pairs',  cat: 'Selection', desc: 'Roulette wheel selection picks pairs proportional to fitness using a 10,000-slot wheel.' },
-              { y: 3, name: 'Mark pairs as mated',    cat: 'Crossover', desc: 'Selected specimens are assigned roles A and B for the upcoming crossover.' },
-              { y: 4, name: 'Generate chromosomes',   cat: 'Crossover', desc: 'Single-point crossover at a random position within the configured range produces 2 offspring per pair.' },
-              { y: 5, name: 'Apply mutations',        cat: 'Mutation',  desc: 'Each child has a per-specimen chance of having one random gene replaced with a random value.' },
-              { y: 6, name: 'Realize children',       cat: 'Birth',     desc: 'Fitness is evaluated for each chromosome; they become full specimens (age 1 = child).' },
+              { y: 3, name: 'Generate chromosomes',   cat: 'Crossover', desc: 'Single-point crossover at a random position within the configured range produces 2 offspring per pair.' },
+              { y: 4, name: 'Apply mutations',        cat: 'Mutation',  desc: 'Each child has a per-specimen chance of having one random gene replaced with a random value.' },
+              { y: 5, name: 'Realize children',       cat: 'Birth',     desc: 'Fitness is evaluated for each chromosome; they become full specimens (age 1 = child).' },
             ].map(op => (
               <div key={op.y} style={styles.opRow}>
                 <span style={styles.opY}>{op.y}</span>
@@ -120,27 +118,10 @@ export const HelpGlossary: React.FC<Props> = ({ section }) => (
         </>
       )}
 
-      {section === 'pools' && (
-        <>
-          <p style={styles.para}>
-            Pools are named snapshots of which specimens exist at each step in the pipeline.
-          </p>
-          <Term term="Old Parents">All specimens entering the generation (age 1–3 from previous gen).</Term>
-          <Term term="Previous Children">Children from the prior generation who aged into this one.</Term>
-          <Term term="Eligible Adults" id="glossary-eligible-parents">Adults (age 2) remaining after elders are pruned.</Term>
-          <Term term="Elders">Specimens aged 3, about to be removed.</Term>
-          <Term term="Selected Pairs" id="glossary-actual-parents">Specimens chosen by the roulette wheel for breeding.</Term>
-          <Term term="Unselected">Adults not chosen for breeding; persist through the pipeline aging naturally.</Term>
-          <Term term="Mated Parents">Selected specimens assigned breeding roles A or B.</Term>
-          <Term term="Chromosomes">Raw offspring from crossover, pre-fitness-evaluation.</Term>
-          <Term term="Children">Offspring after fitness evaluation; now full specimens (age 1).</Term>
-        </>
-      )}
-
       {section === 'controls' && (
         <>
           <Term term="Full Step tab">Runs complete generations. Shows pipeline summary, board, config, and chart side by side.</Term>
-          <Term term="Granular Step tab">Steps through each of the 7 operations, showing Before / Transform / After for each.</Term>
+          <Term term="Granular Step tab">Steps through each of the 6 operations, showing Before / Transform / After for each.</Term>
           <Term term="Step (⏭)">Advance one step — full generation in Full mode, one phase in Granular mode.</Term>
           <Term term="Play (▶)">Auto-run full generations continuously at the configured speed.</Term>
           <Term term="Back (⏮)">Undo the last step (up to 50 steps of history).</Term>

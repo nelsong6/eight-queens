@@ -75,7 +75,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentA}
         splicePoint={crossoverPoint}
         showSplice={false}
-        onView={() => onSelectSpecimen(parentA, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'A' })}
+        onView={() => onSelectSpecimen(parentA, { coordinate: { generation: result.generationNumber, operation: 3 }, pool: 'selectedPairs', qualifier: 'A' })}
       />
       <ChromosomeRow
         label="Parent B"
@@ -84,7 +84,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentB}
         splicePoint={crossoverPoint}
         showSplice={false}
-        onView={() => onSelectSpecimen(parentB, { coordinate: { generation: result.generationNumber, operation: 4, boundary: 1 }, pool: 'matedParents', qualifier: 'B' })}
+        onView={() => onSelectSpecimen(parentB, { coordinate: { generation: result.generationNumber, operation: 3 }, pool: 'selectedPairs', qualifier: 'B' })}
       />
 
       {/* Splice indicator */}
@@ -120,7 +120,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentB}
         splicePoint={crossoverPoint}
         showSplice={true}
-        onView={() => onSelectSpecimen(childA, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'A' })}
+        onView={() => onSelectSpecimen(childA, { coordinate: { generation: result.generationNumber, operation: 3 }, pool: 'chromosomes', qualifier: 'A' })}
       />
       <ChromosomeRow
         label="Child B"
@@ -129,7 +129,7 @@ export const CrossoverPhase: React.FC<Props> = ({
         colorRight={COLORS.parentA}
         splicePoint={crossoverPoint}
         showSplice={true}
-        onView={() => onSelectSpecimen(childB, { coordinate: { generation: result.generationNumber, operation: 5, boundary: 1 }, pool: 'chromosomes', qualifier: 'B' })}
+        onView={() => onSelectSpecimen(childB, { coordinate: { generation: result.generationNumber, operation: 3 }, pool: 'chromosomes', qualifier: 'B' })}
       />
     </div>
   );

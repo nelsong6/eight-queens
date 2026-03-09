@@ -42,11 +42,10 @@ export type PipelineRole =
   | 'previousChild'   // op 0 before: prior-gen children (to become adults)
   | 'retiredParent'   // op 0 after: aged to elder (age 3)
   | 'eligibleAdult'   // op 1 after / op 2 before: age 1-2, eligible for selection
-  | 'selectedPair'    // op 2 after: chosen by roulette wheel
+  | 'selectedPair'    // op 2 after: chosen by roulette wheel, partnerIds set
   | 'unselected'      // op 2 after: not chosen, persists alongside
-  | 'matedParent'     // op 3 after: partner assigned, partnerIds set
-  | 'chromosome'      // op 4 after: new child pre-realization, crossover data set
-  | 'finalChild';     // op 6 after: chromosome promoted to age-1 child
+  | 'chromosome'      // op 3 after: new child pre-realization, crossover data set
+  | 'finalChild';     // op 5 after: chromosome promoted to age-1 child
 
 export interface Specimen {
   /** Globally unique numeric ID. */
@@ -63,7 +62,7 @@ export interface Specimen {
   age: Age;
   /** Role in the generation pipeline snapshot; undefined outside pipeline context. */
   pipelineRole?: PipelineRole;
-  /** IDs of mating partners (set at op 3+, can have multiple from roulette reselection). */
+  /** IDs of mating partners (set at op 2+, can have multiple from roulette reselection). */
   partnerIds?: number[];
   /** ID of the A-side parent (set on chromosomes/children). */
   parentAId?: number;
@@ -71,7 +70,7 @@ export interface Specimen {
   parentBId?: number;
   /** Crossover split position used when this specimen was bred. */
   crossoverPoint?: number;
-  /** Whether this chromosome was mutated during Apply Mutations (op 5). */
+  /** Whether this chromosome was mutated during Apply Mutations (op 4). */
   mutated?: boolean;
   /** Gene values before mutation was applied (only if mutated). */
   preMutationSolution?: number[];
@@ -158,7 +157,7 @@ export type OpCategory = 'Aging' | 'Pruning' | 'Selection' | 'Crossover' | 'Muta
 
 /** Definition of one atomic operation in the generation pipeline. */
 export interface OpDefinition {
-  /** y-axis value (0–7). */
+  /** y-axis value (0–5). */
   index: number;
   /** Human-readable name, e.g. "Promote children". */
   name: string;
@@ -168,12 +167,11 @@ export interface OpDefinition {
 
 /**
  * A precise position in the GA pipeline.
- * Format: x.y.t where x=generation, y=operation (0–6), t=phase (0=before, 1=after).
+ * Format: x.y where x=generation, y=operation (0–5). Time implies the step is complete.
  */
 export interface TimeCoordinate {
   generation: number;
   operation: number;
-  boundary: 0 | 1;
 }
 
 /** Named population pool at a given pipeline position. */
@@ -184,7 +182,6 @@ export type PoolName =
   | 'retiredParents'
   | 'selectedPairs'
   | 'unselected'
-  | 'matedParents'
   | 'chromosomes'
   | 'finalChildren';
 
@@ -215,9 +212,35 @@ export type PipelineSnapshot = Specimen[];
  */
 export type PipelineOp = [PipelineSnapshot, PipelineSnapshot, PipelineSnapshot];
 
+/**
+ * A breeding pair: two specimens selected for crossover.
+ * Created at op 2, annotated at op 3, pruned when source specimens are removed.
+ */
+export interface BreedingPair {
+  /** Index of this pair within the generation's breeding sequence (0-based). */
+  index: number;
+  /** The A-side parent (contributes left portion of child A's chromosome). */
+  parentA: Specimen;
+  /** The B-side parent (contributes left portion of child B's chromosome). */
+  parentB: Specimen;
+  /** Crossover split position used for this pair. Set at op 3. */
+  crossoverPoint?: number;
+  /** The A-side child. Set at op 3. */
+  childA?: Specimen;
+  /** The B-side child. Set at op 3. */
+  childB?: Specimen;
+}
+
+/** Per-operation transform data that supplements the specimen snapshots. */
+export interface PipelineTransformData {
+  pairs?: BreedingPair[];
+}
+
 /** Complete pipeline for one generation: ops[y][z] = snapshot at operation y, boundary z. */
 export interface GenerationPipeline {
-  ops: PipelineOp[]; // length 7, indexed by operation (0–6)
+  ops: PipelineOp[]; // length 6, indexed by operation (0–5)
+  /** Per-operation transform data keyed by operation index (0-5). Only present for ops with pair data. */
+  transformData?: Record<number, PipelineTransformData>;
 }
 
 /**

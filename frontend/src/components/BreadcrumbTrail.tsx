@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { getOp, SCREENS_PER_OP, SCREENS_PER_GENERATION } from '../engine/time-coordinate';
+import { getOp, OPS_PER_GENERATION } from '../engine/time-coordinate';
 import { colors } from '../colors';
 import type { ActiveTab } from './TabBar';
 
@@ -117,27 +117,20 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({
         helpText: 'Granular step mode: stepping through each algorithm phase',
       });
 
-      // Layer 3: Walkthrough phase (walkthroughPhase = operation * 2 + boundary)
+      // Layer 3: Walkthrough phase (walkthroughPhase = operation index)
       if (hasWalkthrough) {
-        const operation = Math.floor(walkthroughPhase! / SCREENS_PER_OP);
-        const boundary = walkthroughPhase! % SCREENS_PER_OP as 0 | 1;
+        const operation = walkthroughPhase!;
         const op = getOp(operation);
-        const boundaryLabel = boundary === 0 ? 'Before' : 'After';
-        const screenIndex = walkthroughPhase! + 1;
-        const totalScreens = SCREENS_PER_GENERATION;
+        const screenIndex = operation + 1;
+        const totalScreens = OPS_PER_GENERATION;
         result.push({
           label: `${op.category} — ${op.name}`,
           onClick: hasZoom ? () => { onClearZoom(); } : null,
-          helpText: `${op.name} [${op.type}]`,
-        });
-        result.push({
-          label: boundaryLabel,
-          onClick: hasZoom ? () => { onClearZoom(); } : null,
-          helpText: `Step ${screenIndex}/${totalScreens}: ${boundaryLabel} ${op.name} [${op.type}]`,
+          helpText: `Step ${screenIndex}/${totalScreens}: ${op.name} [${op.type}]`,
         });
 
-        // Layer 4: Pair indicator (crossover generate chromosomes, after)
-        if (operation === 4 && boundary === 1 && browsePairIndex !== null) {
+        // Layer 4: Pair indicator (generate chromosomes)
+        if (operation === 3 && browsePairIndex !== null) {
           result.push({
             label: `Pair #${browsePairIndex + 1}`,
             onClick: null,

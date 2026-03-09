@@ -18,6 +18,7 @@ import {
   GenerationBreedingData,
   GenerationPipeline,
   PipelineOp,
+  BreedingPair,
   StepStatistics,
   MAX_FITNESS,
 } from './types';
@@ -216,7 +217,7 @@ export class QueensPuzzle {
     };
 
     // Assemble full pipeline snapshot (skipped for intermediate bulk steps)
-    const emptyOps = (): GenerationPipeline => ({ ops: Array.from({ length: 7 }, (): PipelineOp => [[], [], []]) });
+    const emptyOps = (): GenerationPipeline => ({ ops: Array.from({ length: 6 }, (): PipelineOp => [[], [], []]) });
 
     let pipeline: GenerationPipeline;
     if (skipPipeline) {
@@ -256,42 +257,66 @@ export class QueensPuzzle {
         ...eligibleAdultsSnap.map(i => tag(i, 'eligibleAdult')),
       ];
       const snap12 = eligibleAdultsSnap.map(i => tag(i, 'eligibleAdult')); // op 1 after / op 2 before
-      const snap22 = [ // op 2 after / op 3 before: selected + unselected
-        ...actualParents.map(i => tag(i, 'selectedPair')),
-        ...unselected.map(i => tag(i, 'unselected')),
-      ];
-      const snap32 = [ // op 3 after / op 4 before: mated (with partners) + unselected
-        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
-        ...unselected.map(i => tag(i, 'unselected')),
+      const selectedPairSnap = actualParents.map(i => tag(i, 'selectedPair', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] }));
+      const unselectedSnap = unselected.map(i => tag(i, 'unselected'));
+      const snap22 = [ // op 2 after / op 3 before: selected (with partners) + unselected
+        ...selectedPairSnap,
+        ...unselectedSnap,
       ];
       const preMutChromosomes = this._preMutationChildren.map(i => tag(i, 'chromosome'));
-      const snap42 = [ // op 4 after / op 5 before: mated + unselected + pre-mutation chromosomes
-        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
-        ...unselected.map(i => tag(i, 'unselected')),
+      const snap32 = [ // op 3 after / op 4 before: selected + unselected + pre-mutation chromosomes
+        ...selectedPairSnap,
+        ...unselectedSnap,
         ...preMutChromosomes,
       ];
       const postMutChromosomes = this.children.map(i => tag(i, 'chromosome'));
-      const snap52 = [ // op 5 after / op 6 before: mated + unselected + post-mutation chromosomes
-        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
-        ...unselected.map(i => tag(i, 'unselected')),
+      const snap42 = [ // op 4 after / op 5 before: selected + unselected + post-mutation chromosomes
+        ...selectedPairSnap,
+        ...unselectedSnap,
         ...postMutChromosomes,
       ];
-      const snap62 = [ // op 6 after: mated + unselected + realized children
-        ...actualParents.map(i => tag(i, 'matedParent', { partnerIds: [...(partnerIdMap.get(i.id) ?? new Set())] })),
-        ...unselected.map(i => tag(i, 'unselected')),
+      const snap52 = [ // op 5 after: selected + unselected + realized children
+        ...selectedPairSnap,
+        ...unselectedSnap,
         ...this.children.map(i => tag(i, 'finalChild')),
       ];
+
+      // Build breeding pairs for ops 2-3 transform data
+      const buildPairs = (
+        tagRole: PipelineRole,
+        withPartners: boolean,
+        withCrossover: boolean,
+      ): BreedingPair[] => {
+        const pairs: BreedingPair[] = [];
+        for (let i = 0; i < this._aParents.length; i++) {
+          const pA = tag(this._aParents[i]!, tagRole,
+            withPartners ? { partnerIds: [...(partnerIdMap.get(this._aParents[i]!.id) ?? new Set())] } : undefined);
+          const pB = tag(this._bParents[i]!, tagRole,
+            withPartners ? { partnerIds: [...(partnerIdMap.get(this._bParents[i]!.id) ?? new Set())] } : undefined);
+          const pair: BreedingPair = { index: i, parentA: pA, parentB: pB };
+          if (withCrossover) {
+            pair.crossoverPoint = this._crossoverPoints[i];
+            pair.childA = preMutChromosomes[i * 2];
+            pair.childB = preMutChromosomes[i * 2 + 1]; // may be undefined for last pair on early termination
+          }
+          pairs.push(pair);
+        }
+        return pairs;
+      };
 
       pipeline = {
         ops: [
           makeOp(snap00, snap02), // op 0: Age specimens
           makeOp(snap02, snap12), // op 1: Remove elders
           makeOp(snap12, snap22), // op 2: Select breeding pairs
-          makeOp(snap22, snap32), // op 3: Mark pairs as mated
-          makeOp(snap32, snap42), // op 4: Generate chromosomes
-          makeOp(snap42, snap52), // op 5: Apply mutations
-          makeOp(snap52, snap62), // op 6: Realize children
+          makeOp(snap22, snap32), // op 3: Generate chromosomes
+          makeOp(snap32, snap42), // op 4: Apply mutations
+          makeOp(snap42, snap52), // op 5: Realize children
         ],
+        transformData: {
+          2: { pairs: buildPairs('selectedPair', true, false) },
+          3: { pairs: buildPairs('selectedPair', true, true) },
+        },
       };
     }
 
@@ -556,12 +581,65 @@ export class QueensPuzzle {
    */
   getInitialResult(): GenerationResult {
     const best = this.parents[0]!; // already sorted descending
-    // Gen 0 micro mode starts at 0.6.2 — pre-aging pools are never visited.
+    // Gen 0 micro mode starts at 0.5.2 — pre-aging pools are never visited.
     // Stub with all-empty ops; withPipeline() will reconstruct from breedingData on demand.
     const emptyOp = (): PipelineOp => [[], [], []];
     const pipeline: GenerationPipeline = {
-      ops: [emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp()],
+      ops: [emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp(), emptyOp()],
     };
+
+    // Build synthetic breeding pairs for gen 0 so they appear in micro-mode walkthrough.
+    // Pairs seed parents consecutively and map them to the initial children.
+    const numPairs = Math.floor(this._seedParents.length / 2);
+    const syntheticCrossover = 4; // midpoint of 8-gene chromosome
+    const allChildren = this.parents.map(cloneSpecimen);
+
+    const tag = (spec: Specimen, role: PipelineRole, extra?: Partial<Specimen>): Specimen => ({
+      ...cloneSpecimen(spec), pipelineRole: role, ...extra,
+    });
+
+    const syntheticAParents: Specimen[] = [];
+    const syntheticBParents: Specimen[] = [];
+    const syntheticCrossoverPoints: number[] = [];
+
+    const buildSyntheticPairs = (
+      tagRole: PipelineRole,
+      withPartners: boolean,
+      withCrossover: boolean,
+    ): BreedingPair[] => {
+      const pairs: BreedingPair[] = [];
+      for (let i = 0; i < numPairs; i++) {
+        const seedA = this._seedParents[i * 2]!;
+        const seedB = this._seedParents[i * 2 + 1]!;
+        const pA = tag(seedA, tagRole,
+          withPartners ? { partnerIds: [seedB.id] } : undefined);
+        const pB = tag(seedB, tagRole,
+          withPartners ? { partnerIds: [seedA.id] } : undefined);
+        const pair: BreedingPair = { index: i, parentA: pA, parentB: pB };
+        if (withCrossover) {
+          pair.crossoverPoint = syntheticCrossover;
+          pair.childA = tag(allChildren[i * 2]!, 'chromosome');
+          pair.childB = i * 2 + 1 < allChildren.length
+            ? tag(allChildren[i * 2 + 1]!, 'chromosome')
+            : undefined;
+        }
+        pairs.push(pair);
+      }
+      return pairs;
+    };
+
+    // Collect aParents/bParents for breedingData
+    for (let i = 0; i < numPairs; i++) {
+      syntheticAParents.push(this._seedParents[i * 2]!);
+      syntheticBParents.push(this._seedParents[i * 2 + 1]!);
+      syntheticCrossoverPoints.push(syntheticCrossover);
+    }
+
+    pipeline.transformData = {
+      2: { pairs: buildSyntheticPairs('selectedPair', true, false) },
+      3: { pairs: buildSyntheticPairs('selectedPair', true, true) },
+    };
+
     return {
       generationNumber: 0,
       bestFitness: best.fitness,
@@ -575,16 +653,16 @@ export class QueensPuzzle {
       lastChildA: null,
       lastChildB: null,
       breedingData: {
-        aParents: [],
-        bParents: [],
-        aChildren: [],
-        bChildren: [],
+        aParents: syntheticAParents,
+        bParents: syntheticBParents,
+        aChildren: allChildren.filter((_, i) => i % 2 === 0).slice(0, numPairs),
+        bChildren: allChildren.filter((_, i) => i % 2 === 1).slice(0, numPairs),
         actualParents: [...this._seedParents],
         mutations: [],
         mutationRecords: [],
         eligibleParents: [...this._seedParents],
-        allChildren: this.parents.map(cloneSpecimen),
-        crossoverPoints: [],
+        allChildren,
+        crossoverPoints: syntheticCrossoverPoints,
       },
       stepStatistics: {
         eligibleParentsCount: this._seedParents.length,

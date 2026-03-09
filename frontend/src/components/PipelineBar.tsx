@@ -1,26 +1,23 @@
 /**
  * PipelineBar — universal navigation graphic shown in the sticky header.
- * Extracted and enlarged from SubPhaseScreen's PipelineProgress.
- * Clicking any segment navigates to that operation/boundary.
+ * Clicking any segment navigates to that operation.
  */
 import React from 'react';
 import type { TimeCoordinate } from '../engine/types';
-import { GENERATION_OPS, OPS_PER_GENERATION, SCREENS_PER_OP } from '../engine/time-coordinate';
+import { GENERATION_OPS, OPS_PER_GENERATION } from '../engine/time-coordinate';
 import { CATEGORY_COLORS } from './walkthrough/SpecimenList';
 import { colors } from '../colors';
 
-const BOUNDARY_LABELS = ['Before', 'After'] as const;
-
 interface Props {
   coordinate: TimeCoordinate;
-  onNavigate: (operation: number, boundary: 0 | 1) => void;
+  onNavigate: (operation: number) => void;
   /** Dims the bar when there is no result data yet */
   hasResult: boolean;
 }
 
 export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult }) => {
-  const currentStep = coordinate.operation * SCREENS_PER_OP + coordinate.boundary;
-  const totalSteps = OPS_PER_GENERATION * SCREENS_PER_OP;
+  const currentStep = coordinate.operation;
+  const totalSteps = OPS_PER_GENERATION;
   return (
     <div
       style={{ ...styles.container, opacity: hasResult ? 1 : 0.4 }}
@@ -33,34 +30,25 @@ export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult
         <span style={styles.stepTotal}>{totalSteps}</span>
       </div>
 
-      {/* Main bar: 14 segments (7 operations × 2 boundaries) */}
+      {/* Main bar: 6 segments (one per operation) */}
       <div style={styles.barWrap}>
         <div style={styles.bar}>
           {GENERATION_OPS.map((op, opIdx) => {
             const color = CATEGORY_COLORS[op.category] ?? colors.text.disabled;
-            const isActiveOp = coordinate.operation === opIdx;
+            const isCurrent = currentStep === opIdx;
+            const isPast = currentStep > opIdx;
             return (
-              <div key={opIdx} style={{ ...styles.opGroup, outline: isActiveOp ? `1px solid ${color}55` : 'none' }}>
-                {([0, 1] as const).map((bIdx) => {
-                  const stepIdx = opIdx * SCREENS_PER_OP + bIdx;
-                  const isCurrent = currentStep === stepIdx;
-                  const isPast = currentStep > stepIdx;
-                  return (
-                    <div
-                      key={bIdx}
-                      onClick={() => onNavigate(opIdx, bIdx)}
-                      data-help={`${op.category}: ${op.name} (${BOUNDARY_LABELS[bIdx]})`}
-                      style={{
-                        ...styles.segment,
-                        flex: 1,
-                        backgroundColor: isCurrent ? color : isPast ? color + '55' : colors.bg.raised,
-                        borderRight: bIdx < 1 ? `1px solid ${isPast || isCurrent ? color + '33' : colors.bg.base}` : 'none',
-                        boxShadow: isCurrent ? `0 0 8px ${color}99` : 'none',
-                      }}
-                    />
-                  );
-                })}
-              </div>
+              <div
+                key={opIdx}
+                onClick={() => onNavigate(opIdx)}
+                data-help={`${op.category}: ${op.name}`}
+                style={{
+                  ...styles.segment,
+                  flex: 1,
+                  backgroundColor: isCurrent ? color : isPast ? color + '55' : colors.bg.raised,
+                  boxShadow: isCurrent ? `0 0 8px ${color}99` : 'none',
+                }}
+              />
             );
           })}
         </div>
@@ -74,7 +62,7 @@ export const PipelineBar: React.FC<Props> = ({ coordinate, onNavigate, hasResult
             return (
               <div
                 key={opIdx}
-                onClick={() => onNavigate(opIdx, 0)}
+                onClick={() => onNavigate(opIdx)}
                 style={{
                   ...styles.label,
                   color: isActive ? color : isPastOp ? color + '88' : colors.text.tertiary,
@@ -140,19 +128,11 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     overflow: 'hidden',
   },
-  opGroup: {
-    flex: 1,
-    display: 'flex',
-    gap: 0,
-    height: '100%',
-    borderRadius: 2,
-    overflow: 'hidden',
-    outlineOffset: 1,
-  },
   segment: {
     height: '100%',
-    transition: 'background-color 0.2s, box-shadow 0.2s',
+    transition: 'box-shadow 0.2s',
     cursor: 'pointer',
+    borderRadius: 2,
   },
   labels: {
     display: 'flex',
@@ -165,7 +145,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center' as const,
     letterSpacing: 0.3,
     textTransform: 'uppercase' as const,
-    transition: 'color 0.2s',
+    transition: 'none',
     whiteSpace: 'nowrap' as const,
     overflow: 'hidden',
     textOverflow: 'ellipsis',

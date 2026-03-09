@@ -1,12 +1,14 @@
 name: Phase 3 - CD Deploy
 
 on:
+  push:
+    branches: [main]
   repository_dispatch:
     types: [spacelift_infra_ready]
   workflow_dispatch:
     inputs:
       commit_sha:
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -15,7 +17,7 @@ permissions:
 
 env:
   SPACELIFT_API_KEY_ENDPOINT: 'https://nelsong6.app.us.spacelift.io'
-  TARGET_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
+  TARGET_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha || github.sha }}
 
 jobs:
   # ============================================================================

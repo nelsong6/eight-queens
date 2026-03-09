@@ -48,6 +48,7 @@
   -webkit-appearance: none;
   appearance: none;
   outline: none;
+  color: var(--tab-color) !important;
 }
 
 .tab-nav:focus,

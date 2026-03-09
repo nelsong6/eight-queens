@@ -6,7 +6,7 @@
  */
 import React, { useRef } from 'react';
 import type { Specimen, Age, GenerationResult, TimeCoordinate } from '../../engine/types';
-import { getOp, getTransformDescription, getPipelineState } from '../../engine/time-coordinate';
+import { getOp, getTransformDescription } from '../../engine/time-coordinate';
 import {
   createColumnHelper,
   useReactTable,
@@ -55,10 +55,9 @@ export const OP_POOL_TRANSITIONS: Record<number, { from: string[]; to: string[];
   0: { from: ['Old Parents', 'Previous Children'], to: ['Eligible Adults', 'Elders'], arrow: 'All specimens age: children→adults, adults→elders' },
   1: { from: ['Eligible Adults', 'Elders'], to: ['Eligible Adults'], arrow: 'Elders removed from population' },
   2: { from: ['Eligible Adults'], to: ['Selected Pairs', 'Unselected'], arrow: 'Roulette wheel picks breeding pairs' },
-  3: { from: ['Selected Pairs', 'Unselected'], to: ['Mated Parents', 'Unselected'], arrow: 'Pairs assigned as breeding partners (A, B)' },
-  4: { from: ['Mated Parents', 'Unselected'], to: ['Mated Parents', 'Unselected', 'Chromosomes'], arrow: 'Single-point crossover produces 2 children per pair' },
-  5: { from: ['Chromosomes'], to: ['Chromosomes'], arrow: 'Random gene replaced at configured mutation rate' },
-  6: { from: ['Chromosomes'], to: ['Children'], arrow: 'Fitness evaluated; chromosomes become specimens' },
+  3: { from: ['Selected Pairs', 'Unselected'], to: ['Selected Pairs', 'Unselected', 'Chromosomes'], arrow: 'Single-point crossover produces 2 children per pair' },
+  4: { from: ['Chromosomes'], to: ['Chromosomes'], arrow: 'Random gene replaced at configured mutation rate' },
+  5: { from: ['Chromosomes'], to: ['Children'], arrow: 'Fitness evaluated; chromosomes become specimens' },
 };
 
 /** Renders the operation flow diagram (input pools → transform → output pools). */
@@ -70,8 +69,8 @@ export const TransformView: React.FC<{
   const transition = OP_POOL_TRANSITIONS[coordinate.operation]!;
   const op = getOp(coordinate.operation);
 
-  const beforeSnap = getPipelineState(result.pipeline, coordinate.operation, 0);
-  const afterSnap = getPipelineState(result.pipeline, coordinate.operation, 1);
+  const beforeSnap = result.pipeline.ops[coordinate.operation]![0];
+  const afterSnap = result.pipeline.ops[coordinate.operation]![2];
   const beforeCount = beforeSnap.length;
   const afterCount = afterSnap.length;
 
@@ -163,7 +162,9 @@ export const SpecimenList: React.FC<{
   onColumnFiltersChange: React.Dispatch<React.SetStateAction<ColumnFiltersState>>;
   /** If true, list fills its flex container instead of a fixed 300px height */
   flex?: boolean;
-}> = ({ specimens, onClickItem, sorting, onSortingChange, columnFilters, onColumnFiltersChange, flex = false }) => {
+  /** Highlight the row matching this specimen id */
+  selectedId?: number;
+}> = ({ specimens, onClickItem, sorting, onSortingChange, columnFilters, onColumnFiltersChange, flex = false, selectedId }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const table = useReactTable({
@@ -235,6 +236,7 @@ export const SpecimenList: React.FC<{
         >{'\uD83C\uDFC5'}</span>
         <span
           data-help="Sort by age (click to toggle)"
+          data-help-glossary="age-lifecycle"
           onClick={ageHeader.getToggleSortingHandler()}
           style={{ gridColumn: '11', ...gridStyles.headerCell, cursor: 'pointer', borderBottom: ageSorted ? `2px solid ${colors.accent.orange}` : '2px solid transparent' }}
         >{'\uD83D\uDC23'}</span>
@@ -244,16 +246,17 @@ export const SpecimenList: React.FC<{
           {virtualizer.getVirtualItems().map(virtualRow => {
             const row = rows[virtualRow.index]!;
             const ind = row.original;
+            const isSelected = ind.id === selectedId;
             return (
               <div
                 key={ind.id}
-                className="vl-row"
+                className={isSelected ? 'vl-row vl-selected' : 'vl-row'}
                 style={{
                   ...gridStyles.row,
                   position: 'absolute' as const,
                   top: virtualRow.start,
                   width: '100%',
-                  backgroundColor: virtualRow.index % 2 === 1 ? colors.interactive.rowStripe : 'transparent',
+                  backgroundColor: isSelected ? colors.interactive.selected : virtualRow.index % 2 === 1 ? colors.interactive.rowStripe : 'transparent',
                 }}
                 onClick={() => onClickItem(ind)}
               >

@@ -1,19 +1,18 @@
-import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, PipelineRole, GenerationPipeline, PipelineOp, Specimen, GenerationResult, Age, MutationRecord } from './types';
+import type { OpDefinition, TimeCoordinate, PoolOrigin, PoolName, PipelineRole, GenerationPipeline, PipelineOp, BreedingPair, Specimen, GenerationResult, Age, MutationRecord } from './types';
 import type { CategoryKey } from '../components/BreedingListboxes';
 import { cloneSpecimen } from './specimen';
 
 /** Total number of atomic operations per generation. */
-export const OPS_PER_GENERATION = 7;
+export const OPS_PER_GENERATION = 6;
 
 /** The ordered list of atomic operations within a single generation. */
 export const GENERATION_OPS: OpDefinition[] = [
   { index: 0, name: 'Age specimens',          type: 'transform', category: 'Aging' },
   { index: 1, name: 'Remove elders',        type: 'remove',    category: 'Pruning' },
   { index: 2, name: 'Select breeding pairs', type: 'transform', category: 'Selection' },
-  { index: 3, name: 'Mark pairs as mated',   type: 'transform', category: 'Crossover' },
-  { index: 4, name: 'Generate chromosomes',  type: 'add',       category: 'Crossover' },
-  { index: 5, name: 'Apply mutations',       type: 'transform', category: 'Mutation' },
-  { index: 6, name: 'Realize children',      type: 'transform', category: 'Birth' },
+  { index: 3, name: 'Generate chromosomes',  type: 'add',       category: 'Crossover' },
+  { index: 4, name: 'Apply mutations',       type: 'transform', category: 'Mutation' },
+  { index: 5, name: 'Realize children',      type: 'transform', category: 'Birth' },
 ];
 
 /** Get the operation definition for a given y-axis index. */
@@ -21,22 +20,19 @@ export function getOp(y: number): OpDefinition {
   return GENERATION_OPS[y]!;
 }
 
-/** Number of screens per operation (before, after). */
-export const SCREENS_PER_OP = 2;
+/** Total screens per generation (one per operation). */
+export const SCREENS_PER_GENERATION = OPS_PER_GENERATION;
 
-/** Total screens per generation. */
-export const SCREENS_PER_GENERATION = OPS_PER_GENERATION * SCREENS_PER_OP;
 
-/** Format a TimeCoordinate as "x.y.t". */
+/** Format a TimeCoordinate as "x.y". */
 export function formatCoordinate(tc: TimeCoordinate): string {
-  return `${tc.generation}.${tc.operation}.${tc.boundary}`;
+  return `${tc.generation}.${tc.operation}`;
 }
 
-/** Human-readable label for a coordinate, e.g. "Selection — Select breeding pairs (before)". */
+/** Human-readable label for a coordinate, e.g. "Selection — Select breeding pairs". */
 export function coordinateLabel(tc: TimeCoordinate): string {
   const op = getOp(tc.operation);
-  const phaseLabel = tc.boundary === 0 ? 'before' : 'after';
-  return `${op.category} — ${op.name} (${phaseLabel})`;
+  return `${op.category} — ${op.name}`;
 }
 
 /** Human-readable label for a pool name. */
@@ -47,7 +43,6 @@ const POOL_DISPLAY_NAMES: Record<PoolName, string> = {
   retiredParents: 'Elders',
   selectedPairs: 'Selected Pairs',
   unselected: 'Unselected',
-  matedParents: 'Mated Parents',
   chromosomes: 'Chromosomes',
   finalChildren: 'Children',
 };
@@ -63,22 +58,22 @@ export function categoryToOrigin(category: CategoryKey, generation: number): Poo
   switch (category) {
     case 'Eligible parents':
       return {
-        coordinate: { generation, operation: 2, boundary: 0 },
+        coordinate: { generation, operation: 2 },
         pool: 'eligibleAdults',
       };
     case 'Actual parents':
       return {
-        coordinate: { generation, operation: 2, boundary: 1 },
+        coordinate: { generation, operation: 2 },
         pool: 'selectedPairs',
       };
     case 'Children':
       return {
-        coordinate: { generation, operation: 6, boundary: 1 },
+        coordinate: { generation, operation: 5 },
         pool: 'finalChildren',
       };
     case 'Mutations':
       return {
-        coordinate: { generation, operation: 5, boundary: 1 },
+        coordinate: { generation, operation: 4 },
         pool: 'chromosomes',
       };
     default:
@@ -98,17 +93,16 @@ const ROLE_FOR_POOL: Record<PoolName, PipelineRole> = {
   eligibleAdults:   'eligibleAdult',
   selectedPairs:    'selectedPair',
   unselected:       'unselected',
-  matedParents:     'matedParent',
   chromosomes:      'chromosome',
   finalChildren:    'finalChild',
 };
 
 /**
- * Get the master-list snapshot at a given operation and boundary from the pipeline.
- * Boundary 0 = before (internal slot 0), boundary 1 = after (internal slot 2).
+ * Get the master-list snapshot at a given operation from the pipeline.
+ * Always returns the completed (after) state — internal slot 2.
  */
-export function getPipelineState(pipeline: GenerationPipeline, op: number, boundary: 0 | 1): Specimen[] {
-  return pipeline.ops[op]![boundary === 0 ? 0 : 2];
+export function getPipelineState(pipeline: GenerationPipeline, op: number): Specimen[] {
+  return pipeline.ops[op]![2];
 }
 
 /**
@@ -120,46 +114,78 @@ export function resolvePoolFromPipeline(
   pool: PoolName,
   pipeline: GenerationPipeline,
   op: number,
-  boundary: 0 | 1,
 ): Specimen[] {
   const role = ROLE_FOR_POOL[pool];
-  return getPipelineState(pipeline, op, boundary).filter(i => i.pipelineRole === role);
+  return getPipelineState(pipeline, op).filter(i => i.pipelineRole === role);
 }
 
 /**
- * Returns which named pools are present at a given coordinate.
+ * Get the breeding pairs visible at a given coordinate (completed state).
+ * Pairs follow their specimens: when parents are pruned, their pairs are removed.
+ *
+ * - Op 0: previous generation's completed pairs (from previousPipeline)
+ * - Op 1: pairs pruned alongside elder parents → typically empty
+ * - Op 2: newly created pairs from roulette wheel selection
+ * - Op 3–5: current generation's pairs from transformData
+ */
+export function getPairsAtCoordinate(
+  pipeline: GenerationPipeline,
+  coordinate: TimeCoordinate,
+  previousPipeline?: GenerationPipeline,
+): BreedingPair[] {
+  const { operation: y } = coordinate;
+
+  // Op 0: previous generation's completed pairs persist (aging doesn't affect pairs)
+  if (y === 0) {
+    const prevPairs = previousPipeline?.transformData?.[3]?.pairs;
+    if (!prevPairs || prevPairs.length === 0) return [];
+    return prevPairs;
+  }
+
+  // Op 1: pairs pruned alongside their elder parents → filter by surviving specimen IDs
+  if (y === 1) {
+    const prevPairs = previousPipeline?.transformData?.[3]?.pairs;
+    if (!prevPairs || prevPairs.length === 0) return [];
+    const survivingIds = new Set(getPipelineState(pipeline, 1).map(s => s.id));
+    return prevPairs.filter(p => survivingIds.has(p.parentA.id) && survivingIds.has(p.parentB.id));
+  }
+
+  // Op 2: newly created pairs
+  if (y === 2) return pipeline.transformData?.[2]?.pairs ?? [];
+
+  // Op 3: pairs with crossover data
+  if (y === 3) return pipeline.transformData?.[3]?.pairs ?? [];
+
+  // Ops 4-5: pairs persist from op 3 (children may be mutated/realized)
+  if (y >= 4) return pipeline.transformData?.[3]?.pairs ?? [];
+
+  return [];
+}
+
+/**
+ * Returns which named pools are present at a given coordinate (completed state).
  * Used by the walkthrough UI to populate the browsable dropdown.
  */
 export function getPoolsAtCoordinate(tc: TimeCoordinate): PoolName[] {
-  const { operation: y, boundary: z } = tc;
+  const { operation: y } = tc;
 
   // y=0 Age specimens: children→adults, adults→elders
-  if (y === 0 && z === 0) return ['oldParents', 'previousChildren'];
-  if (y === 0 && z === 1) return ['eligibleAdults', 'retiredParents'];
+  if (y === 0) return ['eligibleAdults', 'retiredParents'];
 
-  // y=1 Remove elders: remove
-  if (y === 1 && z === 0) return ['eligibleAdults', 'retiredParents'];
-  if (y === 1 && z === 1) return ['eligibleAdults'];
+  // y=1 Remove elders: elders removed
+  if (y === 1) return ['eligibleAdults'];
 
-  // y=2 Select breeding pairs: transform
-  if (y === 2 && z === 0) return ['eligibleAdults'];
-  if (y === 2 && z === 1) return ['selectedPairs', 'unselected'];
+  // y=2 Select breeding pairs: selected + unselected
+  if (y === 2) return ['selectedPairs', 'unselected'];
 
-  // y=3 Mark pairs as mated: transform (unselected persist alongside)
-  if (y === 3 && z === 0) return ['selectedPairs', 'unselected'];
-  if (y === 3 && z === 1) return ['matedParents', 'unselected'];
+  // y=3 Generate chromosomes: add chromosomes (unselected persist alongside)
+  if (y === 3) return ['selectedPairs', 'unselected', 'chromosomes'];
 
-  // y=4 Generate chromosomes: add (unselected persist alongside)
-  if (y === 4 && z === 0) return ['matedParents', 'unselected'];
-  if (y === 4 && z === 1) return ['matedParents', 'unselected', 'chromosomes'];
+  // y=4 Apply mutations: chromosomes may be mutated
+  if (y === 4) return ['chromosomes', 'selectedPairs', 'unselected'];
 
-  // y=5 Apply mutations: transform
-  if (y === 5 && z === 0) return ['chromosomes', 'matedParents', 'unselected'];
-  if (y === 5 && z === 1) return ['chromosomes', 'matedParents', 'unselected'];
-
-  // y=6 Realize children: transform
-  if (y === 6 && z === 0) return ['chromosomes', 'matedParents', 'unselected'];
-  if (y === 6 && z === 1) return ['finalChildren', 'matedParents', 'unselected'];
+  // y=5 Realize children: chromosomes promoted to children
+  if (y === 5) return ['finalChildren', 'selectedPairs', 'unselected'];
 
   return [];
 }
@@ -201,16 +227,6 @@ const TRANSFORM_DESCRIPTIONS: Record<number, { title: string; description: strin
     ],
   },
   3: {
-    title: 'Marking Pairs as Mated',
-    description: 'Selected pairs are formally assigned as breeding partners.',
-    detail: 'Each pair (A, B) is locked in for crossover. The pair ordering determines which parent contributes the left vs. right portion of the child chromosome.',
-    pseudoCode: [
-      'for each (parentA, parentB) in pairs:',
-      '  parentA.role = mated',
-      '  parentB.role = mated',
-    ],
-  },
-  4: {
     title: 'Generating Chromosomes',
     description: 'Single-point crossover creates two child chromosomes per pair.',
     detail: 'A random crossover point is chosen within the configured range. Child A gets genes [0..point] from parent A and [point+1..7] from parent B. Child B gets the inverse. Each pair produces exactly two offspring.',
@@ -223,18 +239,19 @@ const TRANSFORM_DESCRIPTIONS: Record<number, { title: string; description: strin
       '        + parentA[point+1..7]',
     ],
   },
-  5: {
+  4: {
     title: 'Applying Mutations',
     description: 'Random gene mutations are applied based on the mutation rate.',
     detail: 'Each child has an independent probability of mutation (configured rate). If selected, one random gene position is replaced with a random value [0-7]. Mutations introduce diversity that can escape local optima.',
     pseudoCode: [
-      'for each child in children:',
-      '  if random() < mutationRate:',
-      '    gene = randomIndex(0, 7)',
-      '    child[gene] = randomValue(0, 7)',
+      'for each specimen in population:',
+      '  if age == 0:',
+      '    if random() < mutationRate:',
+      '      gene_position = randomIndex(0, 7)',
+      '      child[gene_position] = randomValue(0, 7)',
     ],
   },
-  6: {
+  5: {
     title: 'Realizing Children',
     description: 'Chromosomes are promoted to children by aging from 0 to 1.',
     detail: 'Each chromosome (age 0) already has its fitness score and ID from crossover. The birth step simply advances their age from 0 (chromosome) to 1 (child), making them full participants in the next generation cycle.',
@@ -267,7 +284,7 @@ export function isPipelineEmpty(result: GenerationResult): boolean {
  * computed regardless of skipPipeline. Called lazily when an undo entry with
  * an empty pipeline needs to be navigated in micro mode.
  *
- * Ops 2–6: fully reconstructed from result.breedingData.
+ * Ops 2–5: fully reconstructed from result.breedingData.
  * Ops 0–1: require previousResult for pre-aging pool data; left empty if unavailable.
  */
 export function reconstructPipeline(
@@ -341,8 +358,7 @@ export function reconstructPipeline(
   const eligibleAdults = breedingData.eligibleParents.map(p => tag(p, 'eligibleAdult'));
   const selectedIds = new Set(breedingData.actualParents.map(p => p.id));
   const unselected = eligibleAdults.filter(p => !selectedIds.has(p.id)).map(p => tag(p, 'unselected'));
-  const selectedPairs = breedingData.actualParents.map(p => tag(p, 'selectedPair'));
-  const matedParents = breedingData.actualParents.map(p => tag(p, 'matedParent', {
+  const selectedPairs = breedingData.actualParents.map(p => tag(p, 'selectedPair', {
     partnerIds: [...(partnerIdMap.get(p.id) ?? new Set())],
   }));
   const finalChildren = breedingData.allChildren.map(child => {
@@ -372,15 +388,41 @@ export function reconstructPipeline(
     );
   }
 
+  // Build breeding pairs for transform data (ops 2-3)
+  const buildReconstructedPairs = (
+    role: PipelineRole,
+    withPartners: boolean,
+    withCrossover: boolean,
+  ): BreedingPair[] => {
+    const pairs: BreedingPair[] = [];
+    for (let i = 0; i < breedingData.aParents.length; i++) {
+      const pA = tag(breedingData.aParents[i]!, role,
+        withPartners ? { partnerIds: [...(partnerIdMap.get(breedingData.aParents[i]!.id) ?? new Set())] } : undefined);
+      const pB = tag(breedingData.bParents[i]!, role,
+        withPartners ? { partnerIds: [...(partnerIdMap.get(breedingData.bParents[i]!.id) ?? new Set())] } : undefined);
+      const pair: BreedingPair = { index: i, parentA: pA, parentB: pB };
+      if (withCrossover) {
+        pair.crossoverPoint = breedingData.crossoverPoints[i];
+        pair.childA = preMutationChromosomes[i * 2];
+        pair.childB = preMutationChromosomes[i * 2 + 1];
+      }
+      pairs.push(pair);
+    }
+    return pairs;
+  };
+
   return {
     ops: [
       op0,
       op1,
       makeOp(eligibleAdults, [...selectedPairs, ...unselected]),
-      makeOp([...selectedPairs, ...unselected], [...matedParents, ...unselected]),
-      makeOp([...matedParents, ...unselected], [...matedParents, ...unselected, ...preMutationChromosomes]),
-      makeOp([...matedParents, ...unselected, ...preMutationChromosomes], [...matedParents, ...unselected, ...postMutChromosomes]),
-      makeOp([...matedParents, ...unselected, ...postMutChromosomes], [...matedParents, ...unselected, ...finalChildren]),
+      makeOp([...selectedPairs, ...unselected], [...selectedPairs, ...unselected, ...preMutationChromosomes]),
+      makeOp([...selectedPairs, ...unselected, ...preMutationChromosomes], [...selectedPairs, ...unselected, ...postMutChromosomes]),
+      makeOp([...selectedPairs, ...unselected, ...postMutChromosomes], [...selectedPairs, ...unselected, ...finalChildren]),
     ],
+    transformData: {
+      2: { pairs: buildReconstructedPairs('selectedPair', true, false) },
+      3: { pairs: buildReconstructedPairs('selectedPair', true, true) },
+    },
   };
 }
