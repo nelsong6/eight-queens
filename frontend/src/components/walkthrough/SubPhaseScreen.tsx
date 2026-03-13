@@ -192,6 +192,7 @@ export const SubPhaseScreen: React.FC<Props> = ({
             columnFilters={columnFilters}
             onColumnFiltersChange={setColumnFilters}
             selectedId={selectedId}
+            flex
           />
         </div>
       )}
@@ -241,7 +242,9 @@ const styles: Record<string, React.CSSProperties> = {
     flex: '1 1 300px',
     fontFamily: 'monospace',
     fontSize: 11,
-    overflow: 'auto',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column' as const,
   },
   header: {
     display: 'flex',
@@ -276,6 +279,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   poolSection: {
     marginBottom: 12,
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column' as const,
   },
   emptyPool: {
     color: colors.text.disabled,

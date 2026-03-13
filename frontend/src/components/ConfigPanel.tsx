@@ -353,6 +353,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${colors.border.subtle}`,
     minWidth: 180,
     minHeight: 0,
+    flex: 1,
     overflowY: 'auto' as const,
     boxSizing: 'border-box' as const,
   },

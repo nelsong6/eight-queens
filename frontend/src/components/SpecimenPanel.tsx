@@ -252,6 +252,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     fontSize: 11,
     marginTop: 12,
+    flex: 1,
+    minHeight: 0,
   },
   title: {
     margin: '0 0 12px 0',

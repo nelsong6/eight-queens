@@ -155,13 +155,12 @@ const pairStyles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
   },
   outerScroll: {
-    overflowX: 'auto' as const,
+    overflowX: 'hidden' as const,
     border: `1px solid ${colors.border.subtle}`,
     borderRadius: 4,
     backgroundColor: colors.bg.raised,
   },
   innerContent: {
-    minWidth: 520,
   },
   headerRow: {
     display: 'flex',
@@ -175,7 +174,7 @@ const pairStyles: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid ${colors.border.subtle}`,
   },
   headerPairIdx: {
-    width: 30,
+    width: 22,
     textAlign: 'center' as const,
   },
   headerLabel: {
@@ -190,7 +189,7 @@ const pairStyles: Record<string, React.CSSProperties> = {
   row: {
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
     paddingLeft: 6,
     paddingRight: 6,
     fontSize: 11,
@@ -199,7 +198,7 @@ const pairStyles: Record<string, React.CSSProperties> = {
     cursor: 'default',
   },
   pairIdx: {
-    width: 30,
+    width: 22,
     textAlign: 'center' as const,
     color: colors.text.tertiary,
     fontSize: 10,
@@ -218,28 +217,30 @@ const pairStyles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     borderLeft: '2px solid',
     cursor: 'pointer',
-    flexShrink: 0,
+    flex: '1 1 0',
+    minWidth: 0,
+    overflow: 'hidden' as const,
   },
   parentSide: {
     fontSize: 9,
     fontWeight: 'bold' as const,
-    marginRight: 2,
+    marginRight: 1,
   },
   parentId: {
     color: colors.text.secondary,
     fontSize: 10,
-    marginRight: 3,
-    minWidth: 32,
+    marginRight: 2,
+    minWidth: 24,
   },
   gene: {
     color: colors.text.primary,
-    width: 12,
+    width: 10,
     textAlign: 'center' as const,
     fontSize: 11,
   },
   fitness: {
     color: colors.accent.gold,
-    marginLeft: 3,
+    marginLeft: 1,
     fontSize: 11,
     minWidth: 16,
     textAlign: 'right' as const,

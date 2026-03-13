@@ -175,11 +175,9 @@ export const Chessboard: React.FC<Props> = ({ specimen, showAttacks = true, spee
       <div style={{
         ...styles.boardContainer,
         transform: `scale(${boardScale})`,
-        transformOrigin: boardScale < 1 ? 'top left' : 'top center',
-        ...(boardScale < 1 ? {
-          marginRight: -(BOARD_PX * (1 - boardScale)),
-          marginBottom: -(BOARD_PX * (1 - boardScale)),
-        } : {}),
+        transformOrigin: 'top left',
+        marginRight: -(BOARD_PX * (1 - boardScale)),
+        marginBottom: -(BOARD_PX * (1 - boardScale)),
       }}>
         <canvas
           ref={canvasRef}

@@ -65,6 +65,9 @@ const App: React.FC = () => {
   const [microPlaying, setMicroPlaying] = useState(false);
   const microIntervalRef = useRef<number | null>(null);
 
+  // Pending auto-play: triggers play on next render after tab switch
+  const pendingAutoPlayRef = useRef(false);
+
   // Tabs
   const [activeTab, setActiveTab] = useState<ActiveTab>('getting-started');
   const [showSpecimen, setShowSpecimen] = useState(false);
@@ -172,6 +175,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [zoomedPanel]);
 
+
   // Lock background scroll when a panel is zoomed
   useEffect(() => {
     if (zoomedPanel) {
@@ -268,6 +272,7 @@ const App: React.FC = () => {
   const handleStartFull = useCallback(() => {
     ensureStarted();
     handleTabChange('full');
+    pendingAutoPlayRef.current = true;
   }, [ensureStarted, handleTabChange]);
 
   const handleReset = useCallback((tab: ActiveTab = 'config') => {
@@ -410,6 +415,14 @@ const App: React.FC = () => {
     algorithm.resume(stepCount, /* skipPipeline */ true);
   }, [ensureStarted, algorithm, activeTab]);
 
+  // Auto-play after "Watch a Full Run" triggers tab switch
+  useEffect(() => {
+    if (pendingAutoPlayRef.current && activeTab === 'full') {
+      pendingAutoPlayRef.current = false;
+      handlePlay(1);
+    }
+  }, [activeTab, handlePlay]);
+
   const handleStep = useCallback(() => {
     ensureStarted();
     setWalkthroughState(null);
@@ -429,6 +442,23 @@ const App: React.FC = () => {
     }
     algorithm.pause();
   }, [algorithm, microPlaying]);
+
+  // Spacebar toggles play/pause
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== ' ') return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      e.preventDefault();
+
+      if (algorithm.running || microPlaying) {
+        handlePause();
+      } else if (!algorithm.solved) {
+        handlePlay(1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [algorithm.running, algorithm.solved, microPlaying, handlePlay, handlePause]);
 
   // Keep a ref to handleWalkThrough so the interval always calls the latest version
   const walkThroughRef = useRef(handleWalkThrough);
@@ -786,19 +816,11 @@ const App: React.FC = () => {
                   onSelectSpecimen={handleSelectSpecimen}
                   viewedOrigin={displayOrigin}
                 />
-                <MatedPairPanel
-                  pair={viewedPair}
-                  breedingData={algorithm.lastResult?.breedingData ?? null}
-                  generation={algorithm.generation}
-                  onSelectSpecimen={handleSelectSpecimen}
-                  onSelectPair={handleSelectPair}
-                  viewedSpecimen={viewedSpecimen}
-                />
               </ZoomablePanel>
             </div>
 
             {/* Column 3: Config */}
-            <div style={{ ...styles.column, flex: '0.7 1 0', overflowY: 'auto' }}>
+            <div style={{ ...styles.column, flex: '0.7 1 0' }}>
               <div style={styles.initialSettingsBox}>
                 <InitialSettings {...initialSettingsProps} />
               </div>
@@ -869,9 +891,10 @@ const App: React.FC = () => {
                     specimen={displaySpecimen}
                     showAttacks={hasStarted}
                     speed={algorithm.running ? Math.max(1, 501 - algorithm.speed) : undefined}
+                    zoomed
                   />
                 </div>
-                <div style={styles.specimenDetail}>
+                <div style={styles.specimenDetailCol}>
                   <SpecimenPanel
                     specimen={displaySpecimen}
                     breedingData={algorithm.lastResult?.breedingData ?? null}
@@ -881,6 +904,8 @@ const App: React.FC = () => {
                     onSelectSpecimen={handleSelectSpecimen}
                     viewedOrigin={displayOrigin}
                   />
+                </div>
+                <div style={styles.specimenDetailCol}>
                   <MatedPairPanel
                     pair={viewedPair}
                     breedingData={algorithm.lastResult?.breedingData ?? null}
@@ -999,7 +1024,8 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    padding: '12px 24px',
+    paddingTop: 12,
+    paddingBottom: 12,
     maxWidth: 1800,
     boxSizing: 'border-box' as const,
   },
@@ -1010,6 +1036,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'stretch',
     flex: 1,
     minHeight: 0,
+    padding: '12px 24px',
   },
   column: {
     flex: '1 1 0',
@@ -1136,15 +1163,17 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 0,
     padding: '16px 16px',
-    overflowY: 'auto' as const,
+    overflow: 'hidden' as const,
   },
   specimenBoard: {
     flexShrink: 0,
+    alignSelf: 'stretch',
+    aspectRatio: '1',
   },
-  specimenDetail: {
+  specimenDetailCol: {
     flex: 1,
     minWidth: 0,
-    overflow: 'auto',
+    overflowY: 'auto' as const,
   },
   initialSettingsBox: {
     backgroundColor: colors.bg.surface,

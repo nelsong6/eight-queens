@@ -46,12 +46,13 @@ Key engine files:
 - Header (title + subtitle)
 - HelpBar — shows `data-help` text on hover; press `s` to pin/unpin
 - BreadcrumbTrail — shows navigation context; click segments to navigate back
-- Controls — Full/Micro granularity, play/pause/step/stepN/back/reset, speed slider
+- Controls — Full/Micro granularity, play/pause/step/stepN/back/reset, speed slider; spacebar toggles play/pause
 
 **Column 1: Board + Specimen**
 
-- `Chessboard` — renders queens, shows attack lines when started
-- `SpecimenPanel` — click any specimen to inspect: id, fitness, born gen, role, mutation, parentage, crossover point, sibling, matings; displays `PoolOrigin` coordinate showing exactly where in the pipeline the specimen was observed
+- `Chessboard` — renders queens, shows attack lines when started; accepts `zoomed` prop to scale board via ResizeObserver to fill container (used in specimen drill-down)
+- `SpecimenPanel` — click any specimen to inspect: id, fitness, born gen, role, mutation, parentage, crossover point, sibling; displays `PoolOrigin` coordinate showing exactly where in the pipeline the specimen was observed
+- Specimen drill-down view (replaces Column 3 content): 3-part flex row — scaled chessboard (height-constrained via `aspectRatio: 1`), SpecimenPanel column, MatedPairPanel column
 
 **Column 2: Config (flex 0.7)**
 
@@ -59,8 +60,7 @@ Key engine files:
 
 **Column 3: Breeding / Walkthrough**
 
-- `BreedingListboxes` — virtual-scroll lists for: Eligible parents, Actual parents, Children, Mutations; all sortable; Children view shows parent genomes color-coded by source; Mutations shows before/after diff; Actual parents has master/detail partner view; dropdown labels include time coordinates
-- Replaced by `SubPhaseScreen` in micro mode — unified walkthrough screen driven by `TimeCoordinate`, showing pools present at each completed operation
+- `SubPhaseScreen` — unified screen driven by `TimeCoordinate`, showing population (via `SpecimenList`) and breeding pairs (via `PairList`) at each completed operation. Used in both full step and micro modes. Panel uses flex layout so the specimen list fills available height above the fixed-height pair list.
 
 **Column 4: Chart**
 
@@ -177,3 +177,18 @@ Shared infra vars injected by Spacelift from infra-bootstrap stack.
 - `lint.yml` — linting
 - `spacelift-stack-to-main.yml` — Spacelift integration
 - `tofu-lockfile-check.yml` / `tofu-lockfile-update.yml` — OpenTofu lock file management
+
+## Change Log
+
+### 2026-03-12
+
+- SubPhaseScreen panel switched from `overflow: auto` to flex column layout (`overflow: hidden`, `display: flex`) so the Population list and Breeding Pairs section share available height without an outer scrollbar. `poolSection` is now `flex: 1` and `SpecimenList` receives `flex` prop to fill remaining space dynamically.
+- Removed `MatedPairPanel` from Column 2 (Board + Specimen column) — pair detail no longer shown alongside the specimen inspector.
+- "Watch a Full Run" / "Start Full" button now auto-plays continuously after switching to the Full tab (via `pendingAutoPlayRef` + `useEffect` that calls `handlePlay` once the tab switch renders).
+- Horizontal padding removed from `tabContent` and moved to `columns` style so the controls row border-bottom extends full pane width while columns stay inset with consistent padding.
+- Fixed app crash: spacebar `useEffect` referenced `handlePlay`/`handlePause` before their declarations — moved the effect after both `useCallback` definitions.
+- Added spacebar keyboard shortcut to toggle play/pause globally. Skips when focus is on an input/textarea; prevents default page scroll; respects both full and micro mode play states.
+- Aligned panel bottoms across all 4 columns in Full Step mode: removed `overflowY: 'auto'` from Column 3's div (Config already scrolls internally), added `flex: 1` to ConfigPanel and SpecimenPanel panel styles so they fill their ZoomablePanel wrappers.
+- Fixed PairList horizontal scrollbar at 100% zoom: removed `minWidth: 520` from inner content, made parent genome containers flex-shrinkable (`flex: '1 1 0'`), reduced gene cell width (12→10px), pair index width (30→22px), parentId minWidth (32→24px), and tightened row gaps/margins. Row content now fits ~386px vs ~440px+ available.
+- Specimen view layout: board now scales up using `zoomed` prop + `aspectRatio: 1` on its container, constrained to available height. SpecimenPanel and MatedPairPanel placed side-by-side in two equal flex columns (was stacked vertically in one column). Board uses full available height; detail columns scroll independently.
+- Chessboard `transform: scale()` margin compensation now works for all scale values (was only applied for `scale < 1`). Uses `transformOrigin: 'top left'` uniformly so layout size matches visual size at any scale. Fixes board overflow when `zoomed` prop used inline (not just in ZoomablePanel).
