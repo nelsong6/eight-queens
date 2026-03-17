@@ -24,6 +24,15 @@ import { createRandomSpecimen } from './engine/specimen';
 import { PRESETS } from './data/presets';
 import { colors } from './colors';
 
+// Map URL path to tab id. Unknown paths fall back to 'getting-started'.
+const tabFromPath = (path: string): ActiveTab => {
+  const slug = path.replace(/^\//, '').toLowerCase();
+  const valid: ActiveTab[] = ['getting-started', 'config', 'full', 'micro', 'help'];
+  return (valid as string[]).includes(slug) ? slug as ActiveTab : 'getting-started';
+};
+
+const pathFromTab = (tab: ActiveTab): string => (tab === 'getting-started' ? '/' : `/${tab}`);
+
 type SessionPhase = 'config' | 'running' | 'review';
 
 interface WalkthroughState {
@@ -69,9 +78,25 @@ const App: React.FC = () => {
   const pendingAutoPlayRef = useRef(false);
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<ActiveTab>('getting-started');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => tabFromPath(window.location.pathname));
   const [showSpecimen, setShowSpecimen] = useState(false);
   const [helpSection, setHelpSection] = useState<HelpSectionId>('problem');
+
+  // Push URL when tab changes
+  const navigateTab = useCallback((tab: ActiveTab) => {
+    setActiveTab(tab);
+    const target = pathFromTab(tab);
+    if (window.location.pathname !== target) {
+      window.history.pushState(null, '', target);
+    }
+  }, []);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const onPopState = () => setActiveTab(tabFromPath(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Derived granularity (for existing logic that uses it)
   const granularity: 'full' | 'micro' = activeTab === 'micro' ? 'micro' : 'full';
@@ -106,17 +131,17 @@ const App: React.FC = () => {
       }
       setShowSpecimen(false);
     }
-    setActiveTab(tab);
-  }, [walkthroughState, algorithm, withPipeline]);
+    navigateTab(tab);
+  }, [walkthroughState, algorithm, withPipeline, navigateTab]);
 
   const handleOpenGlossary = useCallback((termId?: string) => {
-    setActiveTab('help');
+    navigateTab('help');
     if (termId) {
       setTimeout(() => {
         document.getElementById(`glossary-${termId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 50);
     }
-  }, []);
+  }, [navigateTab]);
 
   // Lifted config input state (shared between Config tab and ConfigPanel)
   const [populationSize, setPopulationSize] = useState(100);
@@ -266,8 +291,8 @@ const App: React.FC = () => {
       }
     }
     setShowSpecimen(false);
-    setActiveTab('micro');
-  }, [ensureStarted, algorithm, withPipeline]);
+    navigateTab('micro');
+  }, [ensureStarted, algorithm, withPipeline, navigateTab]);
 
   const handleStartFull = useCallback(() => {
     ensureStarted();
@@ -283,12 +308,12 @@ const App: React.FC = () => {
     setViewedPair(null);
     setSessionPhase('config');
     setWalkthroughState(null);
-    setActiveTab(tab);
+    navigateTab(tab);
     setShowSpecimen(false);
     setZoomedPanel(null);
     setInitialSpecimen(createRandomSpecimen(Math.floor(Math.random() * 50)));
     setResetKey((k) => k + 1);
-  }, [algorithm]);
+  }, [algorithm, navigateTab]);
 
   const handleNewSession = useCallback(() => {
     handleReset();
@@ -305,7 +330,7 @@ const App: React.FC = () => {
       // Auto-start from config: step to gen 1 and navigate there
       const result = algorithm.step();
       if (result) {
-        if (activeTab !== 'micro') setActiveTab('micro');
+        if (activeTab !== 'micro') navigateTab('micro');
         setWalkthroughState({ operation, result, previousResult: algorithm.peekUndoResult(), browsePairIndex: 0 });
       }
       return;
@@ -317,14 +342,14 @@ const App: React.FC = () => {
       if (operation < currentOp) return;
     }
     if (activeTab !== 'micro') {
-      setActiveTab('micro');
+      navigateTab('micro');
     }
     setWalkthroughState(prev => {
       if (prev) return { ...prev, operation, browsePairIndex: 0 };
       if (algorithm.lastResult) return { operation, result: withPipeline(algorithm.lastResult), previousResult: algorithm.peekUndoResult(), browsePairIndex: 0 };
       return prev;
     });
-  }, [activeTab, walkthroughState, algorithm, ensureStarted, withPipeline, sessionPhase]);
+  }, [activeTab, walkthroughState, algorithm, ensureStarted, withPipeline, sessionPhase, navigateTab]);
 
   // Operation sub-tab click in Granular Step tab
   const handleSelectOperation = useCallback((op: number) => {

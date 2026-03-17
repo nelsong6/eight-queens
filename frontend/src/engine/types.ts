@@ -88,7 +88,7 @@ export interface GenerationSummary {
 }
 
 /**
- * Per-step statistics matching C# queenspuzzle's "Totals This Step" groupbox.
+ * Per-step statistics matching C# queenspuzzle's "Totals This Generation" groupbox.
  */
 export interface StepStatistics {
   eligibleParentsCount: number;

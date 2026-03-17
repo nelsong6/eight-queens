@@ -39,7 +39,7 @@ Key engine files:
 
 ## UI Layout (App.tsx)
 
-4-column layout. Sticky top bar.
+4-column layout. Sticky top bar. Client-side URL routing via History API (pushState/popstate, no library).
 
 **Top bar (sticky):**
 
@@ -56,7 +56,7 @@ Key engine files:
 
 **Column 2: Config (flex 0.7)**
 
-- `ConfigPanel` — Initial Settings (population, crossover range, mutation %), Status, Totals This Step, Cumulative Totals; preset dropdown; inputs support mousewheel
+- `ConfigPanel` — Initial Settings (population, crossover range, mutation %), Status, Totals This Generation, Cumulative Totals; preset dropdown; inputs support mousewheel
 
 **Column 3: Breeding / Walkthrough**
 
@@ -192,3 +192,11 @@ Shared infra vars injected by Spacelift from infra-bootstrap stack.
 - Fixed PairList horizontal scrollbar at 100% zoom: removed `minWidth: 520` from inner content, made parent genome containers flex-shrinkable (`flex: '1 1 0'`), reduced gene cell width (12→10px), pair index width (30→22px), parentId minWidth (32→24px), and tightened row gaps/margins. Row content now fits ~386px vs ~440px+ available.
 - Specimen view layout: board now scales up using `zoomed` prop + `aspectRatio: 1` on its container, constrained to available height. SpecimenPanel and MatedPairPanel placed side-by-side in two equal flex columns (was stacked vertically in one column). Board uses full available height; detail columns scroll independently.
 - Chessboard `transform: scale()` margin compensation now works for all scale values (was only applied for `scale < 1`). Uses `transformOrigin: 'top left'` uniformly so layout size matches visual size at any scale. Fixes board overflow when `zoomed` prop used inline (not just in ZoomablePanel).
+
+### 2026-03-13
+
+- Renamed "Totals This Step" → "Totals This Generation" in ConfigPanel UI heading, comment, types.ts doc comment, and CLAUDE.md documentation for clearer terminology.
+
+### 2026-03-16
+
+- Added client-side URL routing via History API (pushState/popstate, no library). Tab IDs map to URL paths (`/config`, `/full`, `/micro`, `/help`); default tab (`getting-started`) maps to `/`. Browser back/forward navigates between tabs. `navigateTab` wrapper replaces all direct `setActiveTab` calls outside the router core.

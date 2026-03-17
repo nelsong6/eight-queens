@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { colors } from '../colors';
+import { linkGlossaryTerms } from './helpbar-glossary-links';
 
 const DEFAULT_TEXT = 'Hover over any control to see what it does.';
 
@@ -69,7 +70,7 @@ export const HelpBar: React.FC<Props> = ({ onOpenGlossary }) => {
   return (
     <div style={styles.bar}>
       {held && <span style={styles.pin}>HELD</span>}
-      <span style={styles.text}>{text}</span>
+      <span style={styles.text}>{onOpenGlossary ? linkGlossaryTerms(text, onOpenGlossary) : text}</span>
       {held && glossaryTerm && onOpenGlossary && (
         <button style={styles.glossaryLink} onClick={() => onOpenGlossary(glossaryTerm)}>
           See in Glossary →

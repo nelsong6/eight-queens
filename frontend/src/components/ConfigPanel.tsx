@@ -267,9 +267,9 @@ export const ConfigPanel: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Totals This Step */}
+      {/* Totals This Generation */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle} data-help="Statistics from the most recent generation">Totals This Step</div>
+        <div style={styles.sectionTitle} data-help="Statistics from the most recent generation">Totals This Generation</div>
         <StatRow
           label="Eligible Parents"
           value={stepStatistics?.eligibleParentsCount.toLocaleString() ?? '--'}
